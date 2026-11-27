@@ -17,6 +17,15 @@ pub mod zh;
 
 use std::sync::RwLock;
 
+/// Failure loading a pack's data.
+#[derive(Debug, thiserror::Error)]
+pub enum RomanError {
+    #[error("could not read pack data: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("pack data is invalid: {0}")]
+    BadData(String),
+}
+
 /// Romanized lines (parallel to the input) plus the packs that were needed but missing.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RomanOutput {
