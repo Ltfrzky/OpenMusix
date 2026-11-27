@@ -4,6 +4,7 @@ pub mod lrc;
 pub mod lyrics;
 pub mod normalize;
 pub mod playback;
+pub mod server;
 pub mod settings;
 
 use tauri::Manager;
