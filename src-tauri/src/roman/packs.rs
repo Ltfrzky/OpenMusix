@@ -269,7 +269,7 @@ impl PackManager {
             file.write_all(&chunk).await?;
             hasher.update(&chunk);
             got += chunk.len() as u64;
-            let pct = if spec.size == 0 { 0 } else { (got.saturating_mul(100) / spec.size).min(99) as u8 };
+            let pct = got.saturating_mul(100).checked_div(spec.size).unwrap_or(0).min(99) as u8;
             if pct != last_pct {
                 last_pct = pct;
                 if let Some(i) = self.installing.lock().expect("installing lock").get_mut(&spec.id) {
