@@ -1,3 +1,6 @@
+pub mod model;
+pub mod normalize;
+
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
