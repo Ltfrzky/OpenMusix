@@ -74,6 +74,10 @@ impl Hub {
         *self.art.write().expect("art lock") = art;
     }
 
+    pub fn current_art_key(&self) -> Option<String> {
+        self.art.read().expect("art lock").as_ref().map(|a| a.key.clone())
+    }
+
     pub fn art(&self, key: &str) -> Option<Art> {
         self.art.read().expect("art lock").as_ref().filter(|a| a.key == key).cloned()
     }

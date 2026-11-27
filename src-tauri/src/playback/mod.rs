@@ -1,4 +1,5 @@
 pub mod merger;
+pub mod windows;
 
 use crate::model::Track;
 
