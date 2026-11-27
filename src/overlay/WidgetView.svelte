@@ -34,13 +34,12 @@
     </div>
   </div>
   {#if visible.length}
-    {#key start}
-      <div class="lines">
-        {#each visible as line, i (i)}
-          <p class="om-line" class:current={i === 0 && index >= 0} style="--i: {i}">{line.text || "♪"}</p>
-        {/each}
-      </div>
-    {/key}
+    <div class="lines">
+      <!-- Keyed by absolute line index: lines already on screen stay put, only the new one enters. -->
+      {#each visible as line, i (start + i)}
+        <p class="om-line" class:current={i === 0 && index >= 0}>{line.text || "♪"}</p>
+      {/each}
+    </div>
   {:else if message || plainText}
     <div class="lines">
       {#if message}<p class="message">{message}</p>{/if}
@@ -110,7 +109,6 @@
     color: var(--om-dim);
     text-wrap: balance;
     animation: enter 320ms cubic-bezier(0.2, 0, 0, 1) both;
-    animation-delay: calc(var(--i) * 60ms);
   }
   .om-line.current {
     color: var(--om-hl);
