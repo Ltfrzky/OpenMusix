@@ -82,15 +82,14 @@ impl LrclibClient {
                 params.push(("album_name", a.clone()));
             }
             params.push(("duration", ((d + 500) / 1000).to_string()));
-            if let Some(r) = self.fetch::<LrclibRecord>(self.url("/api/get", &params)).await? {
-                if passes_guard(q, &r, false) {
+            if let Some(r) = self.fetch::<LrclibRecord>(self.url("/api/get", &params)).await?
+                && passes_guard(q, &r, false) {
                     let res = to_result(&r);
                     if has_lyrics(&res) {
                         return Ok(res);
                     }
                     instrumental_seen |= r.instrumental;
                 }
-            }
         }
 
         let params = [("track_name", title), ("artist_name", artist)];

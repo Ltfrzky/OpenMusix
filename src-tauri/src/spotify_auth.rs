@@ -153,11 +153,10 @@ impl SpotifyAuth {
 
     /// Cached access token, refreshed 60 s before expiry. A revoked grant disconnects.
     pub async fn access_token(&self, client_id: &str) -> Result<String, AuthError> {
-        if let Some(a) = self.access.lock().unwrap().as_ref() {
-            if a.expires_at > Instant::now() + Duration::from_secs(60) {
+        if let Some(a) = self.access.lock().unwrap().as_ref()
+            && a.expires_at > Instant::now() + Duration::from_secs(60) {
                 return Ok(a.token.clone());
             }
-        }
         let refresh = keyring_entry()?.get_password().map_err(|_| AuthError::NotConnected)?;
         let form = [("grant_type", "refresh_token"), ("refresh_token", refresh.as_str()), ("client_id", client_id)];
         match self.token_request(&form).await {

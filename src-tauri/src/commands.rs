@@ -54,14 +54,13 @@ pub async fn update_settings(app: AppHandle, ctx: Ctx<'_>, settings: Settings) -
     let old = ctx.settings.get();
     let new = ctx.settings.update(|s| *s = settings).map_err(err)?;
     ctx.sync_settings();
-    if new.hotkey != old.hotkey {
-        if let Err(e) = shell::register_hotkey(&app, Some(&old.hotkey), &new.hotkey) {
+    if new.hotkey != old.hotkey
+        && let Err(e) = shell::register_hotkey(&app, Some(&old.hotkey), &new.hotkey) {
             // Keep the old, working hotkey and report the problem.
             let _ = shell::register_hotkey(&app, None, &old.hotkey);
             ctx.settings.update(|s| s.hotkey = old.hotkey.clone()).map_err(err)?;
             return Err(format!("Hotkey not available: {e}"));
         }
-    }
     if new.start_with_windows != old.start_with_windows {
         let al = app.autolaunch();
         let r = if new.start_with_windows { al.enable() } else { al.disable() };
@@ -195,8 +194,8 @@ mod tests {
         assert!(!m.contains_key("k"));
     }
     #[test] fn project_copies_settings_and_track_offset() {
-        let mut s = Settings::default();
-        s.global_offset_ms = 250; s.show_plain_lyrics = true; s.track_offsets_ms.insert("a|b".into(), -300);
+        let mut s = Settings { global_offset_ms: 250, show_plain_lyrics: true, ..Default::default() };
+        s.track_offsets_ms.insert("a|b".into(), -300);
         let mut snap = Snapshot { track_key: Some("a|b".into()), ..Default::default() };
         project_settings(&s, &mut snap);
         assert_eq!((snap.global_offset_ms, snap.track_offset_ms, snap.show_plain_lyrics), (250, -300, true));

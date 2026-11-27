@@ -10,11 +10,11 @@ export function fontStack(family: string): string {
   return `${primary}, "Segoe UI", system-ui, sans-serif`;
 }
 
-/** CSS custom properties consumed by the overlay views. */
-export function styleVars(s: Style): Record<string, string> {
+/** CSS custom properties consumed by the overlay views. `fit` caps text to the window height (floating window). */
+export function styleVars(s: Style, opts: { fit?: boolean } = {}): Record<string, string> {
   return {
     "--om-font": fontStack(s.fontFamily),
-    "--om-size": `${s.fontSizePx}px`,
+    "--om-size": opts.fit ? `min(${s.fontSizePx}px, 11vh)` : `${s.fontSizePx}px`,
     "--om-text": s.textColor,
     "--om-hl": s.highlightColor,
     "--om-dim": s.dimColor,

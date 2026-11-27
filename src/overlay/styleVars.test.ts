@@ -17,3 +17,7 @@ test("presets match rust defaults", () => {
   expect(PRESETS.spotlight).toMatchObject({ fontFamily: "Outfit", fontSizePx: 44, align: "center", lineCount: 7, effect: "shadow", background: "transparent", showArt: false });
   expect(PRESETS.glass).toMatchObject({ fontFamily: "Inter", fontSizePx: 22, align: "left", lineCount: 3, effect: "none", background: "panel", showArt: true });
 });
+test("fit mode caps font size to the window height", () => {
+  expect(styleVars(PRESETS.spotlight, { fit: true })["--om-size"]).toBe("min(44px, 11vh)");
+  expect(styleVars(PRESETS.spotlight)["--om-size"]).toBe("44px");
+});

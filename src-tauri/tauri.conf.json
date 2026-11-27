@@ -33,8 +33,20 @@
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
-      "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "shortDescription": "Synced lyrics overlay for streamers",
+    "longDescription": "OpenMusix detects the song you are playing, fetches time-synced lyrics from LRCLIB and serves them as an OBS-ready overlay.",
+    "publisher": "OpenMusix",
+    "homepage": "https://github.com/Ltfrzky/OpenMusix",
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico"
+      }
+    }
   }
 }

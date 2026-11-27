@@ -70,11 +70,10 @@ pub fn run() {
             if s.floating_window {
                 let _ = shell::floating_window(&handle, true, s.port);
             }
-            if std::env::args().any(|a| a == "--minimized") {
-                if let Some(w) = app.get_webview_window("main") {
+            if std::env::args().any(|a| a == "--minimized")
+                && let Some(w) = app.get_webview_window("main") {
                     let _ = w.hide();
                 }
-            }
 
             let tx_spotify = tx.clone();
             playback::windows::spawn_windows_source(tx, hub.clone());
@@ -106,8 +105,8 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" {
+            if let WindowEvent::CloseRequested { api, .. } = event
+                && window.label() == "main" {
                     let ctx = window.state::<Arc<AppCtx>>();
                     if ctx.settings.get().minimize_to_tray {
                         api.prevent_close();
@@ -116,7 +115,6 @@ pub fn run() {
                         window.app_handle().exit(0);
                     }
                 }
-            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_snapshot,

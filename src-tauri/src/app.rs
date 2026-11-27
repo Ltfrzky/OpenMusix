@@ -70,8 +70,8 @@ pub async fn run_pipeline(ctx: Arc<AppCtx>, mut rx: mpsc::Receiver<PlaybackEvent
             }
             project_settings(&settings, snap);
         });
-        if changed {
-            if let Some(now) = merged.now {
+        if changed
+            && let Some(now) = merged.now {
                 let hub = ctx.hub.clone();
                 let lyrics = ctx.lyrics.clone();
                 let key = key.unwrap_or_default();
@@ -87,7 +87,6 @@ pub async fn run_pipeline(ctx: Arc<AppCtx>, mut rx: mpsc::Receiver<PlaybackEvent
                     }
                 });
             }
-        }
     }
 }
 

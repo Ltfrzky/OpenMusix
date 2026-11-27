@@ -11,7 +11,7 @@
 </script>
 
 <div class="stage" data-tauri-drag-region={float ? "" : undefined}>
-  <Overlay {snapshot} {pinnedMode} {artBase} />
+  <Overlay {snapshot} {pinnedMode} {artBase} fit={float} />
 </div>
 
 <style>

@@ -11,7 +11,8 @@
     pinnedMode,
     preview = false,
     artBase = "",
-  }: { snapshot: Snapshot | null; pinnedMode?: Mode; preview?: boolean; artBase?: string } = $props();
+    fit = false,
+  }: { snapshot: Snapshot | null; pinnedMode?: Mode; preview?: boolean; artBase?: string; fit?: boolean } = $props();
 
   const clock = new PlaybackClock();
   let index = $state(-1);
@@ -65,7 +66,7 @@
     class:idle={np === null}
     class:paused={np !== null && !np.isPlaying}
     class:preview
-    style={cssText(styleVars(style))}
+    style={cssText(styleVars(style, { fit }))}
   >
     {#if np}
       {#if mode === "focus"}

@@ -22,14 +22,13 @@
   const artBase = $derived(`http://127.0.0.1:${port}`);
 
   onMount(() => {
-    const offs: Array<Promise<() => void>> = [
-      onSnapshot((s) => (snapshot = s)),
-      onServerStatus((s) => (server = s)),
-    ];
-    api.getSnapshot().then((s) => (snapshot = s));
+    // Register listeners first, then read current state: an event fired in between is never lost.
+    const snapOff = onSnapshot((s) => (snapshot = s));
+    const serverOff = onServerStatus((s) => (server = s));
+    snapOff.then(() => api.getSnapshot()).then((s) => (snapshot = s));
+    serverOff.then(() => api.serverStatus()).then((s) => (server = s));
     api.getSettings().then((s) => (settings = s));
-    api.serverStatus().then((s) => (server = s));
-    return () => offs.forEach((p) => p.then((off) => off()));
+    return () => [snapOff, serverOff].forEach((p) => p.then((off) => off()));
   });
 
   // Settings writes are serialized; style edits are debounced so sliders stay smooth.

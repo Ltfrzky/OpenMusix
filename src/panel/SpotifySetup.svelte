@@ -19,11 +19,11 @@
 
   const refresh = async () => (status = await api.spotifyStatus());
   onMount(() => {
-    refresh();
     const off = onSpotifyStatus(() => {
       waiting = false;
       refresh();
     });
+    off.then(refresh);
     return () => off.then((f) => f());
   });
 
