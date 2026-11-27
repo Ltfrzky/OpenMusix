@@ -75,6 +75,9 @@ impl LrclibClient {
         let title = clean_title(&q.title, &q.artist);
         let artist = clean_artist(&q.artist);
         let mut instrumental_seen = false;
+        // A plain-only exact match is kept as a fallback: LRCLIB often has a synced copy of
+        // the same song under another record, which only the search step finds.
+        let mut plain_fallback: Option<LyricsResult> = None;
 
         if let Some(d) = q.duration_ms {
             let mut params = vec![("track_name", title.clone()), ("artist_name", artist.clone())];
@@ -84,9 +87,10 @@ impl LrclibClient {
             params.push(("duration", ((d + 500) / 1000).to_string()));
             if let Some(r) = self.fetch::<LrclibRecord>(self.url("/api/get", &params)).await?
                 && passes_guard(q, &r, false) {
-                    let res = to_result(&r);
-                    if has_lyrics(&res) {
-                        return Ok(res);
+                    match to_result(&r) {
+                        res @ LyricsResult::Synced(_) => return Ok(res),
+                        res @ LyricsResult::PlainOnly(_) => plain_fallback = Some(res),
+                        _ => {}
                     }
                     instrumental_seen |= r.instrumental;
                 }
@@ -98,9 +102,18 @@ impl LrclibClient {
         passing.sort_by_key(|r| rank(q, r));
         if let Some(best) = passing.first() {
             let res = to_result(best);
+            if matches!(res, LyricsResult::Synced(_)) {
+                return Ok(res);
+            }
+            if let Some(p) = plain_fallback {
+                return Ok(p);
+            }
             if has_lyrics(&res) {
                 return Ok(res);
             }
+        }
+        if let Some(p) = plain_fallback {
+            return Ok(p);
         }
         instrumental_seen |= passing.iter().any(|r| r.instrumental);
         Ok(if instrumental_seen { LyricsResult::Instrumental } else { LyricsResult::NotFound })
@@ -148,6 +161,32 @@ mod tests {
         Mock::given(method("GET")).and(path("/api/search"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!([body("Song", 200.0, Some("[00:01.00]hi"), false)]))).mount(&s).await;
         assert!(matches!(client(&s).await.lookup(&song()).await.unwrap(), LyricsResult::Synced(_)));
+    }
+
+    fn plain_body(title: &str, dur: f64) -> serde_json::Value {
+        json!({"id": 8, "trackName": title, "artistName": "Artist", "albumName": "Album", "duration": dur,
+               "instrumental": false, "plainLyrics": "plain words", "syncedLyrics": null})
+    }
+
+    #[tokio::test]
+    async fn plain_only_get_still_searches_for_synced() {
+        let s = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/api/get"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(plain_body("Song", 200.0))).mount(&s).await;
+        Mock::given(method("GET")).and(path("/api/search"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([plain_body("Song", 200.0), body("Song", 201.0, Some("[00:01.00]hi"), false)])))
+            .expect(1).mount(&s).await;
+        assert!(matches!(client(&s).await.lookup(&song()).await.unwrap(), LyricsResult::Synced(_)));
+    }
+
+    #[tokio::test]
+    async fn plain_only_get_kept_when_search_has_no_synced() {
+        let s = MockServer::start().await;
+        Mock::given(method("GET")).and(path("/api/get"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(plain_body("Song", 200.0))).mount(&s).await;
+        Mock::given(method("GET")).and(path("/api/search"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([]))).mount(&s).await;
+        assert_eq!(client(&s).await.lookup(&song()).await.unwrap(), LyricsResult::PlainOnly("plain words".into()));
     }
 
     #[tokio::test]
