@@ -1,4 +1,5 @@
 pub mod model;
+pub mod lrc;
 pub mod normalize;
 
 use tauri::Manager;
