@@ -12,6 +12,7 @@ pub enum RomanLang {
 
 pub mod ja;
 pub mod ko;
+pub mod packs;
 pub mod script;
 pub mod zh;
 

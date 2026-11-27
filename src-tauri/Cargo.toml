@@ -30,7 +30,7 @@ sha2 = "0.10"
 base64 = "0.22"
 rand = "0.9"
 url = "2"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "fs"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "fs", "io-util"] }
 axum = { version = "0.8", features = ["ws"] }
 rust-embed = "8"
 mime_guess = "2"
@@ -39,6 +39,7 @@ keyring = { version = "3", features = ["windows-native"] }
 font-kit = "0.14"
 lindera = { version = "=7.0.0", default-features = false, features = ["mmap"] }
 wana_kana = "=5.0.0"
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 windows = { version = "0.61", features = ["Media_Control", "Foundation", "Foundation_Collections", "Storage_Streams", "Win32_System_WinRT"] }
 
 [dev-dependencies]
