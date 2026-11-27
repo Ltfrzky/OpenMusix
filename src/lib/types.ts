@@ -96,3 +96,13 @@ export type ServerStatus =
   | { state: "running"; port: number }
   | { state: "portInUse"; port: number }
   | { state: "failed"; port: number; message: string };
+
+export type PackState =
+  | { state: "notInstalled" }
+  | { state: "installing"; pct: number }
+  | { state: "installed" }
+  | { state: "builtIn" }
+  | { state: "updateAvailable" }
+  | { state: "broken" };
+
+export type PackInfo = { id: RomanLang; label: string; size: number } & PackState;

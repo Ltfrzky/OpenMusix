@@ -1,7 +1,20 @@
 <script lang="ts">
-  import type { Snapshot } from "../lib/types";
+  import type { RomanLang, Snapshot } from "../lib/types";
+  import { api } from "./api";
 
   let { snapshot, artBase }: { snapshot: Snapshot | null; artBase: string } = $props();
+
+  const LANG: Record<RomanLang, string> = { zh: "Chinese", ja: "Japanese", ko: "Korean" };
+  const missing = $derived(snapshot?.nowPlaying && snapshot.romanize.enabled ? snapshot.romanMissing : []);
+  let installing: RomanLang | null = $state(null);
+  async function install(id: RomanLang) {
+    installing = id;
+    try {
+      await api.installPack(id);
+    } finally {
+      installing = null;
+    }
+  }
 
   const np = $derived(snapshot?.nowPlaying ?? null);
   const art = $derived(np?.track.artUrl ? (np.track.artUrl.startsWith("/") ? artBase + np.track.artUrl : np.track.artUrl) : null);
@@ -43,6 +56,12 @@
     {#if np}
       <h1 class="title">{np.track.title}</h1>
       <p class="artist">{np.track.artist}{np.track.album ? ` · ${np.track.album}` : ""}</p>
+      {#each missing as id (id)}
+        <p class="roman-hint">
+          This song is in {LANG[id]}. Install the {LANG[id]} pack to romanize it.
+          <button class="btn" disabled={installing !== null} onclick={() => install(id)}>Install</button>
+        </p>
+      {/each}
     {:else}
       <h1 class="title muted">Nothing playing</h1>
       <p class="artist">Play a song in Spotify, YouTube Music or any player — it shows up here.</p>
@@ -146,6 +165,15 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .roman-hint {
+    display: flex;
+    gap: var(--sp-2);
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 4px;
+    color: var(--ink-3);
+    font-size: 12px;
   }
   .idle .artist {
     white-space: normal;

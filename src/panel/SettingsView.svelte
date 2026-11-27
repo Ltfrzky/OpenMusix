@@ -2,6 +2,7 @@
   import type { Settings } from "../lib/types";
   import type { Snippet } from "svelte";
   import { api } from "./api";
+  import RomanizationSection from "./RomanizationSection.svelte";
 
   let {
     settings,
@@ -97,6 +98,8 @@
     <label class="switch"><span>Show plain lyrics when no synced version exists</span><input type="checkbox" checked={settings.showPlainLyrics} onchange={(e) => onSave({ showPlainLyrics: e.currentTarget.checked })} /></label>
     <label class="switch"><span>Floating read-along window (always on top)</span><input type="checkbox" checked={settings.floatingWindow} onchange={(e) => onSave({ floatingWindow: e.currentTarget.checked })} /></label>
   </section>
+
+  <RomanizationSection {settings} {onSave} />
 
   <section class="card">
     <header><h2>App</h2></header>

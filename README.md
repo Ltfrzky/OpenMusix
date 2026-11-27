@@ -35,6 +35,17 @@ The overlay only listens on `127.0.0.1`, so OBS has to run on the same PC.
 
 Settings → **Open lyrics folder**, then drop in `.lrc` files named `Artist - Title.lrc`. They win over downloaded lyrics.
 
+## Romanized lyrics
+
+To romanize lyrics:
+
+1. Go to Settings → **Romanization** and turn on **Romanize Chinese, Japanese and Korean lyrics**.
+2. Choose where the romanized text goes: under the original line, or instead of it.
+
+Chinese shows as pinyin, Japanese as romaji, and Korean in Revised Romanization.
+
+Korean works out of the box. Chinese and Japanese each need a language pack: press **Download** next to it. The packs are about 0.3 MB and 15 MB. Each download is checked against a checksum built into the app before it is used. Words with several possible readings are sometimes romanized wrong.
+
 ## Connect Spotify (optional)
 
 Settings → **Connect Spotify** walks you through it:
@@ -50,6 +61,11 @@ If you change the port in Settings, update both the OBS URL and the Spotify redi
 ## Credits
 
 Lyrics are provided by [LRCLIB](https://lrclib.net), a free, community-maintained lyrics database.
+
+The language packs use these sources:
+- Pinyin readings from [pinyin-data](https://github.com/mozillazg/pinyin-data) (MIT).
+- Japanese readings from the IPADIC dictionary (its license ships inside the pack), tokenized with [Lindera](https://github.com/lindera/lindera).
+- Romaji conversion by [wana_kana](https://github.com/PSeitz/wana_kana_rust).
 
 ## Development
 
