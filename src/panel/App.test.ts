@@ -9,6 +9,7 @@ const settings = {
   port: 7878, hotkey: "Ctrl+Alt+L", mode: "widget", globalOffsetMs: 0, trackOffsetsMs: { "a|b": 300 },
   styles: { focus: PRESETS.spotlight, widget: PRESETS.glass }, showPlainLyrics: false, hideWhenIdle: false,
   startWithWindows: false, minimizeToTray: true, floatingWindow: false, spotifyClientId: null,
+  romanize: { enabled: false, display: "below" },
 };
 const updateSettings = vi.fn(async (patch: object) => ({ ...settings, ...patch }));
 vi.mock("./api", () => ({

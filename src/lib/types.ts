@@ -4,6 +4,13 @@ export type Source = "windows" | "spotify";
 export type TextEffect = "none" | "outline" | "shadow";
 export type Align = "left" | "center" | "right";
 export type Background = "transparent" | "panel";
+export type RomanLang = "zh" | "ja" | "ko";
+export type RomanDisplay = "below" | "replace";
+
+export interface Romanize {
+  enabled: boolean;
+  display: RomanDisplay;
+}
 
 export interface Track {
   title: string;
@@ -63,6 +70,10 @@ export interface Snapshot {
   trackOffsetMs: number;
   showPlainLyrics: boolean;
   hideWhenIdle: boolean;
+  romanize: Romanize;
+  /** Romanized text parallel to the lyric lines; null when off or not computed. */
+  roman: (string | null)[] | null;
+  romanMissing: RomanLang[];
 }
 
 export interface Settings {
@@ -78,6 +89,7 @@ export interface Settings {
   minimizeToTray: boolean;
   floatingWindow: boolean;
   spotifyClientId: string | null;
+  romanize: Romanize;
 }
 
 export type ServerStatus =

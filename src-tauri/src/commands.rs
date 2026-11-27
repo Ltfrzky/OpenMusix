@@ -53,6 +53,11 @@ pub fn project_settings(s: &Settings, snap: &mut Snapshot) {
     snap.global_offset_ms = s.global_offset_ms;
     snap.show_plain_lyrics = s.show_plain_lyrics;
     snap.hide_when_idle = s.hide_when_idle;
+    snap.romanize = s.romanize;
+    if !s.romanize.enabled {
+        snap.roman = None;
+        snap.roman_missing.clear();
+    }
     snap.track_offset_ms = snap.track_key.as_ref().and_then(|k| s.track_offsets_ms.get(k)).copied().unwrap_or(0);
 }
 
@@ -255,6 +260,14 @@ mod tests {
         snap.track_key = None;
         project_settings(&s, &mut snap);
         assert_eq!(snap.track_offset_ms, 0);
+    }
+    #[test] fn project_copies_romanize_and_clears_roman_when_disabled() {
+        let s = Settings::default();
+        let mut snap = Snapshot { roman: Some(vec![Some("x".into())]), roman_missing: vec![crate::roman::RomanLang::Ja], ..Default::default() };
+        project_settings(&s, &mut snap);
+        assert_eq!(snap.roman, None);
+        assert!(snap.roman_missing.is_empty());
+        assert!(!snap.romanize.enabled);
     }
 }
 

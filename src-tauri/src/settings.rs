@@ -41,6 +41,23 @@ pub enum Background {
     Panel,
 }
 
+/// Where romanized text goes relative to the original line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum RomanDisplay {
+    #[default]
+    Below,
+    Replace,
+}
+
+/// Romanization of Chinese, Japanese and Korean lyrics. Off by default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Romanize {
+    pub enabled: bool,
+    pub display: RomanDisplay,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Style {
@@ -148,6 +165,7 @@ pub struct Settings {
     pub minimize_to_tray: bool,
     pub floating_window: bool,
     pub spotify_client_id: Option<String>,
+    pub romanize: Romanize,
 }
 
 impl Default for Settings {
@@ -165,6 +183,7 @@ impl Default for Settings {
             minimize_to_tray: true,
             floating_window: false,
             spotify_client_id: None,
+            romanize: Romanize::default(),
         }
     }
 }
@@ -265,5 +284,18 @@ mod tests {
         let st = SettingsStore::load(p.clone());
         let saved = st.update(|s| { s.mode = Mode::Widget; s.track_offsets_ms.insert("a|b".into(), 300); }).unwrap();
         assert_eq!(SettingsStore::load(p).get(), saved);
+    }
+    #[test] fn romanize_defaults_off_below() {
+        let s: Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!(s.romanize, Romanize { enabled: false, display: RomanDisplay::Below });
+    }
+    #[test] fn romanize_partial_patch_keeps_display() {
+        let s: Settings = serde_json::from_str(r#"{"romanize":{"enabled":true}}"#).unwrap();
+        assert!(s.romanize.enabled);
+        assert_eq!(s.romanize.display, RomanDisplay::Below);
+    }
+    #[test] fn romanize_json_shape() {
+        let v = serde_json::to_value(Romanize { enabled: true, display: RomanDisplay::Replace }).unwrap();
+        assert_eq!(v, serde_json::json!({"enabled": true, "display": "replace"}));
     }
 }

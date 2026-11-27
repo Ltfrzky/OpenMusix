@@ -10,6 +10,7 @@ let settings: Settings = {
   port: 7878, hotkey: "Ctrl+Alt+L", mode: "focus", globalOffsetMs: 0, trackOffsetsMs: {},
   styles: { focus: PRESETS.spotlight, widget: PRESETS.glass }, showPlainLyrics: false, hideWhenIdle: false,
   startWithWindows: false, minimizeToTray: true, floatingWindow: false, spotifyClientId: null,
+  romanize: { enabled: false, display: "below" },
 };
 let snapshot: Snapshot | null = null;
 

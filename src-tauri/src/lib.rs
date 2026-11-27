@@ -6,6 +6,7 @@ pub mod lyrics;
 pub mod model;
 pub mod normalize;
 pub mod playback;
+pub mod roman;
 pub mod server;
 pub mod settings;
 pub mod shell;

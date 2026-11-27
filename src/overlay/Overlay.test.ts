@@ -10,7 +10,8 @@ function snap(lyrics: LyricsStatus, over: Partial<Snapshot> = {}): Snapshot {
   return {
     nowPlaying: { track: { title: "Song", artist: "Artist", album: null, durationMs: 200000, artUrl: null }, positionMs: 0, sampledAt: Date.now(), isPlaying: true, source: "windows" },
     lyrics, trackKey: "artist|song", mode: "focus", styles: { focus: PRESETS.spotlight, widget: PRESETS.glass },
-    globalOffsetMs: 0, trackOffsetMs: 0, showPlainLyrics: false, hideWhenIdle: false, ...over,
+    globalOffsetMs: 0, trackOffsetMs: 0, showPlainLyrics: false, hideWhenIdle: false,
+    romanize: { enabled: false, display: "below" }, roman: null, romanMissing: [], ...over,
   };
 }
 const synced: LyricsStatus = { status: "ready", result: { kind: "synced", value: [{ timeMs: 0, text: "First line" }, { timeMs: 99999, text: "Later" }] } };
