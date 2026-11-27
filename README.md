@@ -26,6 +26,12 @@ The background is transparent. To keep one layout in a scene regardless of the s
 
 The overlay only listens on `127.0.0.1`, so OBS has to run on the same PC.
 
+## Add it to TikTok LIVE Studio
+
+LIVE Studio's **Link** source rejects `127.0.0.1` and `localhost`, so use `http://localtest.me:7878/overlay` instead. `localtest.me` is a public domain that always points back to your own PC, so the overlay still never leaves it. The Live tab has a copy button for it.
+
+If LIVE Studio still calls the link invalid, set the port to **80** in Settings. The URL then becomes `http://localtest.me/overlay`, with no port. If your router's DNS blocks names that point to 127.0.0.1, add the overlay in OBS and bring it into LIVE Studio through OBS Virtual Camera instead.
+
 ## Timing
 
 - **All songs** slider: shifts every lyric earlier or later (±2 s).
