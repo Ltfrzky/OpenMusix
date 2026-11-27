@@ -57,18 +57,30 @@ struct AppState {
     port: u16,
 }
 
+/// Public name that always resolves to 127.0.0.1. TikTok LIVE Studio refuses `localhost` and raw IPs
+/// in a Link source, so the panel offers this name for it.
+pub const LOOPBACK_DOMAIN: &str = "localtest.me";
+
+/// The authorities a browser may send for this server: our own names, with `:port`, or bare on port 80.
+fn own_authorities(port: u16) -> Vec<String> {
+    let mut v: Vec<String> = ["127.0.0.1", "localhost", LOOPBACK_DOMAIN].iter().map(|n| format!("{n}:{port}")).collect();
+    if port == 80 {
+        v.extend(["127.0.0.1", "localhost", LOOPBACK_DOMAIN].iter().map(|n| n.to_string()));
+    }
+    v
+}
+
 /// Only our own names: blocks DNS-rebinding pages from reading the server.
 fn host_allowed(host: Option<&str>, port: u16) -> bool {
-    matches!(host, Some(h) if h == format!("127.0.0.1:{port}") || h == format!("localhost:{port}"))
+    matches!(host, Some(h) if own_authorities(port).iter().any(|a| a == h))
 }
 
 /// Browsers let any site open a WebSocket to 127.0.0.1, so the upgrade checks who is asking:
 /// the overlay page itself, the app's own windows, or a non-browser client (no Origin).
 fn origin_allowed(origin: Option<&str>, port: u16) -> bool {
     let Some(o) = origin else { return true };
-    let own = [format!("http://127.0.0.1:{port}"), format!("http://localhost:{port}")];
     let app = ["http://tauri.localhost", "https://tauri.localhost", "tauri://localhost"];
-    own.iter().any(|x| x == o) || app.contains(&o) || (cfg!(debug_assertions) && o == "http://localhost:1420")
+    own_authorities(port).iter().any(|a| o.strip_prefix("http://") == Some(a.as_str())) || app.contains(&o) || (cfg!(debug_assertions) && o == "http://localhost:1420")
 }
 
 async fn guard_host(State(st): State<AppState>, req: axum::extract::Request, next: axum::middleware::Next) -> Response {
@@ -298,6 +310,19 @@ mod tests {
         assert_eq!(r.status(), 403);
         let ok = c.get(format!("http://127.0.0.1:{port}/overlay")).header("host", format!("localhost:{port}")).send().await.unwrap();
         assert_eq!(ok.status(), 200);
+        let tiktok = c.get(format!("http://127.0.0.1:{port}/overlay")).header("host", format!("localtest.me:{port}")).send().await.unwrap();
+        assert_eq!(tiktok.status(), 200);
+        let sub = c.get(format!("http://127.0.0.1:{port}/overlay")).header("host", format!("x.localtest.me:{port}")).send().await.unwrap();
+        assert_eq!(sub.status(), 403);
+    }
+
+    #[test]
+    fn port_80_allows_bare_names() {
+        assert!(host_allowed(Some("localtest.me"), 80));
+        assert!(!host_allowed(Some("localtest.me"), 7878));
+        assert!(origin_allowed(Some("http://localtest.me"), 80));
+        assert!(origin_allowed(Some("http://localtest.me:7878"), 7878));
+        assert!(!origin_allowed(Some("http://localtest.me"), 7878));
     }
 
     #[tokio::test]

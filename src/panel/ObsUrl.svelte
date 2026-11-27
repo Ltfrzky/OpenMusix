@@ -1,9 +1,10 @@
 <script lang="ts">
   import type { Mode } from "../lib/types";
-  import { obsUrl } from "./obsUrl";
+  import { obsUrl, tiktokUrl } from "./obsUrl";
 
   let { port }: { port: number } = $props();
   let copied: string | null = $state(null);
+  const tiktok = $derived(tiktokUrl(port));
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const rows: { id: string; mode?: Mode; label: string; size: string }[] = [
@@ -43,9 +44,37 @@
       </li>
     {/each}
   </ul>
+  <header class="sub">
+    <h2>Add to TikTok LIVE Studio</h2>
+    <p class="hint">
+      Add source → Link. LIVE Studio refuses <code>127.0.0.1</code>, so use this address; it points back to this PC.
+      {#if port !== 80}If it still says the link is invalid, set the port to 80 in Settings.{/if}
+    </p>
+  </header>
+  <ul>
+    <li>
+      <div class="txt">
+        <span class="label">Follows the switch</span>
+        <span class="url">{tiktok.replace("http://", "")}</span>
+      </div>
+      <span class="size num">1920 × 1080</span>
+      <button class="btn" onclick={() => copy("tiktok", tiktok)} aria-label="Copy TikTok LIVE Studio URL">
+        <span class="swap">
+          <span class="icon" class:shown={copied !== "tiktok"}>content_copy</span>
+          <span class="icon ok" class:shown={copied === "tiktok"}>check</span>
+        </span>
+      </button>
+    </li>
+  </ul>
 </section>
 
 <style>
+  .sub {
+    margin-top: var(--sp-3);
+  }
+  code {
+    font-size: 11px;
+  }
   ul {
     list-style: none;
     margin: 0;
