@@ -1,7 +1,9 @@
 pub mod model;
+pub mod hub;
 pub mod lrc;
 pub mod lyrics;
 pub mod normalize;
+pub mod playback;
 pub mod settings;
 
 use tauri::Manager;
