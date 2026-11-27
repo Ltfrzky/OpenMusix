@@ -23,6 +23,29 @@ pub fn apply_nudge(map: &mut HashMap<String, i32>, key: &str, delta: i32) -> i32
     v
 }
 
+/// Merge `patch` (partial camelCase JSON) onto `current`, recursing into objects.
+/// Fields the patch doesn't name are kept, so backend-side changes are never clobbered.
+pub fn apply_patch(current: &Settings, patch: serde_json::Value) -> Result<Settings, String> {
+    fn merge(base: &mut serde_json::Value, patch: serde_json::Value) {
+        match (base, patch) {
+            (serde_json::Value::Object(b), serde_json::Value::Object(p)) => {
+                for (k, v) in p {
+                    match b.get_mut(&k) {
+                        Some(slot) if v.is_object() && slot.is_object() => merge(slot, v),
+                        _ => {
+                            b.insert(k, v);
+                        }
+                    }
+                }
+            }
+            (b, p) => *b = p,
+        }
+    }
+    let mut v = serde_json::to_value(current).map_err(err)?;
+    merge(&mut v, patch);
+    serde_json::from_value(v).map_err(err)
+}
+
 /// Copy the overlay-relevant settings into the snapshot.
 pub fn project_settings(s: &Settings, snap: &mut Snapshot) {
     snap.mode = s.mode;
@@ -50,9 +73,19 @@ pub fn get_settings(ctx: Ctx<'_>) -> Settings {
 }
 
 #[tauri::command]
-pub async fn update_settings(app: AppHandle, ctx: Ctx<'_>, settings: Settings) -> Result<Settings, String> {
+pub async fn update_settings(app: AppHandle, ctx: Ctx<'_>, patch: serde_json::Value) -> Result<Settings, String> {
     let old = ctx.settings.get();
-    let new = ctx.settings.update(|s| *s = settings).map_err(err)?;
+    let mut bad = None;
+    let new = ctx
+        .settings
+        .update(|s| match apply_patch(s, patch) {
+            Ok(next) => *s = next,
+            Err(e) => bad = Some(e),
+        })
+        .map_err(err)?;
+    if let Some(e) = bad {
+        return Err(format!("Invalid setting: {e}"));
+    }
     ctx.sync_settings();
     if new.hotkey != old.hotkey
         && let Err(e) = shell::register_hotkey(&app, Some(&old.hotkey), &new.hotkey) {
@@ -193,6 +226,26 @@ mod tests {
         assert_eq!(apply_nudge(&mut m, "k", -100), 0);
         assert!(!m.contains_key("k"));
     }
+    #[test] fn patch_keeps_fields_it_does_not_name() {
+        let mut cur = Settings { mode: crate::settings::Mode::Widget, ..Default::default() };
+        cur.track_offsets_ms.insert("a|b".into(), 300);
+        let next = apply_patch(&cur, serde_json::json!({ "globalOffsetMs": 100 })).unwrap();
+        assert_eq!(next.global_offset_ms, 100);
+        assert_eq!(next.mode, crate::settings::Mode::Widget);
+        assert_eq!(next.track_offsets_ms.get("a|b"), Some(&300));
+    }
+    #[test] fn patch_merges_nested_styles() {
+        let cur = Settings::default();
+        let next = apply_patch(&cur, serde_json::json!({ "styles": { "widget": { "fontSizePx": 30 } } })).unwrap();
+        assert_eq!(next.styles.widget.font_size_px, 30);
+        assert_eq!(next.styles.widget.preset, "glass");
+        assert_eq!(next.styles.focus, cur.styles.focus);
+    }
+    #[test] fn patch_can_clear_client_id() {
+        let cur = Settings { spotify_client_id: Some("x".into()), ..Default::default() };
+        assert_eq!(apply_patch(&cur, serde_json::json!({ "spotifyClientId": null })).unwrap().spotify_client_id, None);
+    }
+    #[test] fn bad_patch_is_rejected() { assert!(apply_patch(&Settings::default(), serde_json::json!({ "port": "x" })).is_err()); }
     #[test] fn project_copies_settings_and_track_offset() {
         let mut s = Settings { global_offset_ms: 250, show_plain_lyrics: true, ..Default::default() };
         s.track_offsets_ms.insert("a|b".into(), -300);

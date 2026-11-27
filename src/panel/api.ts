@@ -5,7 +5,7 @@ import type { Mode, ServerStatus, Settings, Snapshot } from "../lib/types";
 export const api = {
   getSnapshot: () => invoke<Snapshot>("get_snapshot"),
   getSettings: () => invoke<Settings>("get_settings"),
-  updateSettings: (settings: Settings) => invoke<Settings>("update_settings", { settings }),
+  updateSettings: (patch: Partial<Settings>) => invoke<Settings>("update_settings", { patch }),
   setMode: (mode: Mode) => invoke<void>("set_mode", { mode }),
   nudge: (deltaMs: number) => invoke<number>("nudge_track_offset", { deltaMs }),
   resetTrackOffset: () => invoke<void>("reset_track_offset"),

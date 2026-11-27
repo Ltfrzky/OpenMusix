@@ -19,6 +19,7 @@
   let focusPort = $state(0);
 
   const port = $derived(settings?.port ?? 7878);
+  const mode: Mode = $derived(snapshot?.mode ?? settings?.mode ?? "focus");
   const artBase = $derived(`http://127.0.0.1:${port}`);
 
   onMount(() => {
@@ -31,14 +32,16 @@
     return () => [snapOff, serverOff].forEach((p) => p.then((off) => off()));
   });
 
-  // Settings writes are serialized; style edits are debounced so sliders stay smooth.
+  // Writes send only the fields that changed: the backend also changes settings (hotkey,
+  // tray, per-song nudges), and a full object from here would overwrite those changes.
+  // Style and slider edits are debounced so dragging stays smooth.
   let pending: Partial<Settings> = {};
   let timer: ReturnType<typeof setTimeout> | undefined;
   async function save(patch: Partial<Settings>): Promise<string | null> {
     if (!settings) return null;
     settings = { ...settings, ...patch };
     try {
-      settings = await api.updateSettings(settings);
+      settings = await api.updateSettings(patch);
       return null;
     } catch (e) {
       settings = await api.getSettings();
@@ -96,9 +99,9 @@
         <div class="stage">
           <div class="cue">
             <NowPlayingCard {snapshot} {artBase} />
-            <ModeToggle mode={settings.mode} hotkey={settings.hotkey} onChange={setMode} />
+            <ModeToggle {mode} hotkey={settings.hotkey} onChange={setMode} />
           </div>
-          <Monitor {snapshot} mode={settings.mode} {artBase} />
+          <Monitor {snapshot} {mode} {artBase} />
           <ObsUrl {port} />
         </div>
         <aside class="controls">
@@ -108,7 +111,7 @@
             hasTrack={!!snapshot?.trackKey}
             onGlobal={(ms) => saveSoon({ globalOffsetMs: ms })}
           />
-          <StyleEditor mode={settings.mode} style={settings.styles[settings.mode]} onChange={(s) => setStyle(settings!.mode, s)} />
+          <StyleEditor {mode} style={settings.styles[mode]} onChange={(s) => setStyle(mode, s)} />
         </aside>
       </div>
     {:else}

@@ -19,7 +19,7 @@ mockIPC(
     const a = args as Record<string, unknown>;
     switch (cmd) {
       case "get_settings": return settings;
-      case "update_settings": settings = a.settings as Settings; return settings;
+      case "update_settings": settings = { ...settings, ...(a.patch as Partial<Settings>) }; return settings;
       case "set_mode": settings = { ...settings, mode: a.mode as Settings["mode"] }; return null;
       case "get_snapshot": return snapshot;
       case "get_server_status": return new URLSearchParams(location.search).has("busy") ? { state: "portInUse", port: 7878 } : { state: "running", port: 7878 };
