@@ -162,7 +162,13 @@ pub async fn run_poller(
                     Poll::Unauthorized | Poll::Failed => retry_after = Some(10),
                 }
             }
-            Err(AuthError::Revoked) | Err(AuthError::NotConnected) => continue,
+            // Revoked already disconnected; a refresh token removed outside the app (Credential
+            // Manager) must disconnect too, or this loop would spin without ever waiting.
+            Err(AuthError::Revoked) => continue,
+            Err(AuthError::NotConnected) => {
+                auth.disconnect();
+                continue;
+            }
             Err(e) => {
                 tracing::warn!("{e}");
                 retry_after = Some(15);
@@ -202,6 +208,17 @@ mod tests {
     }
     #[test] fn no_content_is_none() { assert!(parse_currently_playing(204, "", 0).is_none()); }
     #[test] fn garbage_is_none() { assert!(parse_currently_playing(200, "{oops", 0).is_none()); }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn missing_credential_disconnects_instead_of_spinning() {
+        let auth = std::sync::Arc::new(SpotifyAuth::with_keyring_user("test-poller-missing"));
+        auth.force_connected();
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let (_used_tx, used_rx) = tokio::sync::watch::channel(false);
+        let task = tokio::spawn(run_poller(auth.clone(), || Some("cid".to_string()), tx, used_rx, std::sync::Arc::new(tokio::sync::Notify::new())));
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(!auth.is_connected(), "a missing refresh token must disconnect");
+        task.abort();
+    }
     #[test] fn poll_delays() {
         assert_eq!(next_poll_delay(true, None), Duration::from_secs(2));
         assert_eq!(next_poll_delay(false, None), Duration::from_secs(10));

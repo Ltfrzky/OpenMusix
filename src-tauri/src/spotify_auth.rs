@@ -120,6 +120,11 @@ impl SpotifyAuth {
         keyring_entry_for(&self.keyring_user)
     }
 
+    #[cfg(test)]
+    pub fn force_connected(&self) {
+        self.connected.send_replace(true);
+    }
+
     pub fn has_pending(&self) -> bool {
         self.pending.lock().unwrap().is_some()
     }
