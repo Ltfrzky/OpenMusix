@@ -88,7 +88,11 @@ pub fn floating_window(app: &AppHandle, on: bool, port: u16) -> tauri::Result<()
                 .build()
                 .map(|_| ())
         }
-        (false, Some(w)) => w.close(),
+        (false, Some(w)) => {
+            use tauri_plugin_window_state::{AppHandleExt, StateFlags};
+            let _ = app.save_window_state(StateFlags::POSITION | StateFlags::SIZE);
+            w.close()
+        }
         (false, None) => Ok(()),
     }
 }
