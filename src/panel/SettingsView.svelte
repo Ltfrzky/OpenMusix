@@ -95,7 +95,6 @@
     </div>
     <label class="switch"><span>Hide the overlay when nothing is playing</span><input type="checkbox" checked={settings.hideWhenIdle} onchange={(e) => onSave({ hideWhenIdle: e.currentTarget.checked })} /></label>
     <label class="switch"><span>Show plain lyrics when no synced version exists</span><input type="checkbox" checked={settings.showPlainLyrics} onchange={(e) => onSave({ showPlainLyrics: e.currentTarget.checked })} /></label>
-    <label class="switch"><span>Floating read-along window (always on top)</span><input type="checkbox" checked={settings.floatingWindow} onchange={(e) => onSave({ floatingWindow: e.currentTarget.checked })} /></label>
   </section>
 
   <section class="card">

@@ -99,7 +99,19 @@
         <div class="stage">
           <div class="cue">
             <NowPlayingCard {snapshot} {artBase} />
-            <ModeToggle {mode} hotkey={settings.hotkey} onChange={setMode} />
+            <div class="cue-actions">
+              <ModeToggle {mode} hotkey={settings.hotkey} onChange={setMode} />
+              <button
+                class="btn"
+                class:tally={settings.floatingWindow}
+                aria-pressed={settings.floatingWindow}
+                title="Always-on-top lyrics window you can drag anywhere"
+                onclick={() => save({ floatingWindow: !settings!.floatingWindow })}
+              >
+                <span class="icon">picture_in_picture</span>
+                {settings.floatingWindow ? "Hide read-along" : "Show read-along"}
+              </button>
+            </div>
           </div>
           <Monitor {snapshot} {mode} {artBase} />
           <ObsUrl {port} />
@@ -230,6 +242,12 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--sp-4);
+    flex-wrap: wrap;
+  }
+  .cue-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
     flex-wrap: wrap;
   }
   .controls {
