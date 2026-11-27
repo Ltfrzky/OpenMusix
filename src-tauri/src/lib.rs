@@ -49,6 +49,8 @@ pub fn run() {
             let (spotify_used, _) = watch::channel(false);
             let port = settings.get().port;
             let spotify = Arc::new(spotify_auth::SpotifyAuth::new());
+            let roman = Arc::new(roman::Romanizer::new());
+            let packs = Arc::new(roman::packs::PackManager::new(data.join("packs"), roman::packs::manifest(), roman.clone()));
             let ctx = Arc::new(AppCtx {
                 settings,
                 hub: hub.clone(),
@@ -59,6 +61,8 @@ pub fn run() {
                 playback_tx: tx.clone(),
                 spotify_used,
                 windows_changed: Arc::new(Notify::new()),
+                roman,
+                packs,
             });
             ctx.sync_settings();
             app.manage(ctx.clone());
@@ -120,6 +124,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_snapshot,
             commands::get_settings,
+            commands::list_packs,
+            commands::install_pack,
+            commands::remove_pack,
+            commands::cancel_pack_install,
             commands::update_settings,
             commands::set_mode,
             commands::toggle_mode,

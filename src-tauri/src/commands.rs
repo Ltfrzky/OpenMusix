@@ -7,8 +7,10 @@ use std::sync::{Arc, OnceLock};
 use crate::app::AppCtx;
 use crate::server::ServerStatus;
 use crate::settings::Mode;
+use crate::roman::packs::PackInfo;
+use crate::roman::RomanLang;
 use crate::shell;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_opener::OpenerExt as _;
 
@@ -92,6 +94,9 @@ pub async fn update_settings(app: AppHandle, ctx: Ctx<'_>, patch: serde_json::Va
         return Err(format!("Invalid setting: {e}"));
     }
     ctx.sync_settings();
+    if new.romanize != old.romanize || new.show_plain_lyrics != old.show_plain_lyrics {
+        ctx.refresh_roman();
+    }
     if new.hotkey != old.hotkey
         && let Err(e) = shell::register_hotkey(&app, Some(&old.hotkey), &new.hotkey) {
             // Keep the old, working hotkey and report the problem.
@@ -115,6 +120,44 @@ pub async fn update_settings(app: AppHandle, ctx: Ctx<'_>, patch: serde_json::Va
         }
     }
     Ok(new)
+}
+
+#[tauri::command]
+pub fn list_packs(ctx: Ctx<'_>) -> Vec<PackInfo> {
+    ctx.packs.list()
+}
+
+#[derive(Clone, serde::Serialize)]
+struct PackProgress {
+    id: RomanLang,
+    pct: u8,
+}
+
+/// Download and install a pack; emits `pack-progress` while downloading and `packs-changed` at the end.
+#[tauri::command]
+pub async fn install_pack(app: AppHandle, ctx: Ctx<'_>, id: RomanLang) -> Result<(), String> {
+    let ctx = ctx.inner().clone();
+    let h = app.clone();
+    let _ = app.emit("packs-changed", ctx.packs.list());
+    let res = ctx.packs.install(id, move |pct| {
+        let _ = h.emit("pack-progress", PackProgress { id, pct });
+    }).await;
+    let _ = app.emit("packs-changed", ctx.packs.list());
+    ctx.refresh_roman();
+    res.map_err(err)
+}
+
+#[tauri::command]
+pub fn remove_pack(app: AppHandle, ctx: Ctx<'_>, id: RomanLang) -> Result<(), String> {
+    let res = ctx.packs.remove(id);
+    let _ = app.emit("packs-changed", ctx.packs.list());
+    ctx.inner().refresh_roman();
+    res.map_err(err)
+}
+
+#[tauri::command]
+pub fn cancel_pack_install(ctx: Ctx<'_>, id: RomanLang) {
+    ctx.packs.cancel(id);
 }
 
 pub fn set_mode_inner(ctx: &AppCtx, mode: Mode) -> Result<(), String> {

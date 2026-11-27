@@ -138,6 +138,88 @@ fn join(pieces: &[(bool, String)]) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// The lines to romanize for the current snapshot, or `None` when romanization doesn't apply.
+pub fn roman_input(snap: &crate::hub::Snapshot) -> Option<Vec<String>> {
+    use crate::lyrics::LyricsStatus;
+    use crate::model::LyricsResult;
+    if !snap.romanize.enabled {
+        return None;
+    }
+    match &snap.lyrics {
+        LyricsStatus::Ready(LyricsResult::Synced(lines)) => Some(lines.iter().map(|l| l.text.clone()).collect()),
+        LyricsStatus::Ready(LyricsResult::PlainOnly(text)) if snap.show_plain_lyrics => Some(text.lines().map(str::to_string).collect()),
+        _ => None,
+    }
+}
+
+/// Publish `out` only if the snapshot still shows the same track and lines it was computed for.
+pub fn apply_roman(snap: &mut crate::hub::Snapshot, key: &Option<String>, input: &[String], out: RomanOutput) -> bool {
+    if snap.track_key != *key || roman_input(snap).as_deref() != Some(input) {
+        return false;
+    }
+    snap.roman = Some(out.lines);
+    snap.roman_missing = out.missing;
+    true
+}
+
+#[cfg(test)]
+mod pipeline_tests {
+    use super::*;
+    use crate::hub::Snapshot;
+    use crate::lyrics::LyricsStatus;
+    use crate::model::{LyricLine, LyricsResult};
+    use crate::settings::{Romanize, Settings};
+
+    fn on() -> Romanize { Romanize { enabled: true, ..Default::default() } }
+    fn synced(texts: &[&str]) -> LyricsStatus {
+        LyricsStatus::Ready(LyricsResult::Synced(texts.iter().enumerate().map(|(i, t)| LyricLine { time_ms: i as u64 * 1000, text: t.to_string() }).collect()))
+    }
+    fn out() -> RomanOutput { RomanOutput { lines: vec![Some("a1".into()), None], missing: vec![RomanLang::Ja] } }
+
+    #[test] fn roman_input_rules() {
+        let mut s = Snapshot { lyrics: synced(&["a", "b"]), ..Default::default() };
+        assert_eq!(roman_input(&s), None, "disabled");
+        s.romanize = on();
+        assert_eq!(roman_input(&s), Some(vec!["a".to_string(), "b".to_string()]));
+        s.lyrics = LyricsStatus::Loading;
+        assert_eq!(roman_input(&s), None, "loading");
+        s.lyrics = LyricsStatus::Ready(LyricsResult::PlainOnly("x\ny".into()));
+        assert_eq!(roman_input(&s), None, "plain hidden");
+        s.show_plain_lyrics = true;
+        assert_eq!(roman_input(&s), Some(vec!["x".to_string(), "y".to_string()]));
+        s.lyrics = LyricsStatus::Ready(LyricsResult::Instrumental);
+        assert_eq!(roman_input(&s), None);
+    }
+    #[test] fn apply_publishes_when_current() {
+        let mut s = Snapshot { lyrics: synced(&["a", "b"]), romanize: on(), track_key: Some("a|b".into()), ..Default::default() };
+        let input = roman_input(&s).unwrap();
+        assert!(apply_roman(&mut s, &Some("a|b".into()), &input, out()));
+        assert_eq!(s.roman, Some(out().lines));
+        assert_eq!(s.roman_missing, out().missing);
+    }
+    #[test] fn stale_roman_dropped() {
+        let mut s = Snapshot { lyrics: synced(&["a", "b"]), romanize: on(), track_key: Some("a|b".into()), ..Default::default() };
+        let input = roman_input(&s).unwrap();
+        s.track_key = Some("c|d".into());
+        assert!(!apply_roman(&mut s, &Some("a|b".into()), &input, out()));
+        assert_eq!(s.roman, None);
+    }
+    #[test] fn stale_lines_dropped() {
+        let mut s = Snapshot { lyrics: synced(&["a", "b"]), romanize: on(), track_key: Some("a|b".into()), ..Default::default() };
+        let input = roman_input(&s).unwrap();
+        s.lyrics = synced(&["other"]);
+        assert!(!apply_roman(&mut s, &Some("a|b".into()), &input, out()));
+        assert_eq!(s.roman, None);
+    }
+    #[test] fn disabled_clears_and_blocks_late_result() {
+        let mut s = Snapshot { lyrics: synced(&["a", "b"]), romanize: on(), track_key: Some("a|b".into()), ..Default::default() };
+        let input = roman_input(&s).unwrap();
+        crate::commands::project_settings(&Settings::default(), &mut s);
+        assert!(!apply_roman(&mut s, &Some("a|b".into()), &input, out()));
+        assert_eq!(s.roman, None);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
