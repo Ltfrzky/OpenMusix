@@ -205,3 +205,41 @@ mod tests {
         assert_eq!(snap.track_offset_ms, 0);
     }
 }
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpotifyStatus {
+    connected: bool,
+    client_id_set: bool,
+    redirect_uri: String,
+}
+
+#[tauri::command]
+pub fn spotify_status(ctx: Ctx<'_>) -> SpotifyStatus {
+    let s = ctx.settings.get();
+    SpotifyStatus {
+        connected: ctx.spotify.is_connected(),
+        client_id_set: s.spotify_client_id.as_deref().is_some_and(|c| !c.trim().is_empty()),
+        redirect_uri: crate::spotify_auth::redirect_uri(s.port),
+    }
+}
+
+#[tauri::command]
+pub fn spotify_connect(app: AppHandle, ctx: Ctx<'_>) -> Result<(), String> {
+    let s = ctx.settings.get();
+    let Some(cid) = s.spotify_client_id.filter(|c| !c.trim().is_empty()) else {
+        return Err("Paste your Spotify Client ID first.".into());
+    };
+    if !matches!(ctx.server.try_lock().map(|g| g.0.clone()), Ok(ServerStatus::Running { .. })) {
+        return Err("The local server must be running to receive Spotify's redirect.".into());
+    }
+    let url = ctx.spotify.begin(cid.trim(), s.port);
+    app.opener().open_url(url.as_str(), None::<&str>).map_err(err)
+}
+
+#[tauri::command]
+pub async fn spotify_disconnect(ctx: Ctx<'_>) -> Result<(), String> {
+    ctx.spotify.disconnect();
+    let _ = ctx.playback_tx.send(crate::playback::PlaybackEvent::Spotify(None)).await;
+    Ok(())
+}

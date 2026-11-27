@@ -16,6 +16,7 @@ pub struct AppCtx {
     pub lyrics: Arc<LyricsService>,
     pub server: Mutex<(ServerStatus, Option<Shutdown>)>,
     pub oauth: Arc<dyn OAuthCallback>,
+    pub spotify: Arc<crate::spotify_auth::SpotifyAuth>,
     pub playback_tx: mpsc::Sender<PlaybackEvent>,
     /// Whether Spotify data is on screen; read by the Spotify poller for its cadence.
     pub spotify_used: watch::Sender<bool>,

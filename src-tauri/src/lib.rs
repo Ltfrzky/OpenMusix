@@ -9,11 +9,12 @@ pub mod playback;
 pub mod server;
 pub mod settings;
 pub mod shell;
+pub mod spotify_auth;
 
 use app::{forward_to_panel, run_pipeline, AppCtx};
 use hub::{Hub, Snapshot};
 use lyrics::{LrclibClient, LyricsService};
-use server::{NoSpotify, ServerStatus};
+use server::ServerStatus;
 use settings::SettingsStore;
 use std::sync::Arc;
 use tauri::{Manager, WindowEvent};
@@ -46,12 +47,14 @@ pub fn run() {
             let (tx, rx) = mpsc::channel(64);
             let (spotify_used, _) = watch::channel(false);
             let port = settings.get().port;
+            let spotify = Arc::new(spotify_auth::SpotifyAuth::new());
             let ctx = Arc::new(AppCtx {
                 settings,
                 hub: hub.clone(),
                 lyrics,
                 server: Mutex::new((ServerStatus::Failed { port, message: "starting".into() }, None)),
-                oauth: Arc::new(NoSpotify),
+                oauth: spotify.clone(),
+                spotify: spotify.clone(),
                 playback_tx: tx.clone(),
                 spotify_used,
                 windows_changed: Arc::new(Notify::new()),
@@ -73,9 +76,28 @@ pub fn run() {
                 }
             }
 
+            let tx_spotify = tx.clone();
             playback::windows::spawn_windows_source(tx, hub.clone());
             tauri::async_runtime::spawn(run_pipeline(ctx.clone(), rx));
             tauri::async_runtime::spawn(forward_to_panel(handle.clone(), hub));
+            {
+                let c = ctx.clone();
+                tauri::async_runtime::spawn(playback::spotify::run_poller(
+                    spotify.clone(),
+                    move || c.settings.get().spotify_client_id.filter(|s| !s.trim().is_empty()),
+                    tx_spotify,
+                    ctx.spotify_used.subscribe(),
+                    ctx.windows_changed.clone(),
+                ));
+                let mut rx = spotify.watch_connected();
+                let h = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    while rx.changed().await.is_ok() {
+                        let on = *rx.borrow_and_update();
+                        let _ = tauri::Emitter::emit(&h, "spotify-status", on);
+                    }
+                });
+            }
             let c = ctx.clone();
             let h = handle.clone();
             tauri::async_runtime::spawn(async move {
@@ -111,6 +133,9 @@ pub fn run() {
             commands::list_system_fonts,
             commands::set_floating_window,
             commands::show_main,
+            commands::spotify_connect,
+            commands::spotify_disconnect,
+            commands::spotify_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

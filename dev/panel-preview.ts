@@ -24,6 +24,7 @@ mockIPC(
       case "get_snapshot": return snapshot;
       case "get_server_status": return new URLSearchParams(location.search).has("busy") ? { state: "portInUse", port: 7878 } : { state: "running", port: 7878 };
       case "list_system_fonts": return ["Arial", "Bahnschrift", "Segoe UI"];
+      case "spotify_status": return { connected: false, clientIdSet: false, redirectUri: "http://127.0.0.1:7878/spotify/callback" };
       default: return null;
     }
   },

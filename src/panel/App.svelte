@@ -10,6 +10,7 @@
   import StyleEditor from "./StyleEditor.svelte";
   import SettingsView from "./SettingsView.svelte";
   import PortBanner from "./PortBanner.svelte";
+  import SpotifySetup from "./SpotifySetup.svelte";
 
   let snapshot = $state<Snapshot | null>(null);
   let settings = $state<Settings | null>(null);
@@ -112,7 +113,11 @@
         </aside>
       </div>
     {:else}
-      <SettingsView {settings} onSave={save} {focusPort} />
+      <SettingsView {settings} onSave={save} {focusPort}>
+        {#snippet spotify()}
+          <SpotifySetup settings={settings!} onSave={save} />
+        {/snippet}
+      </SettingsView>
     {/if}
   </main>
 </div>

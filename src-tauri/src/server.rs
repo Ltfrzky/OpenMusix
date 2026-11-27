@@ -26,14 +26,24 @@ pub enum ServerStatus {
 
 /// Handles the Spotify OAuth redirect; returns the HTML page shown in the browser.
 pub trait OAuthCallback: Send + Sync {
-    fn handle(&self, code: Option<String>, state: Option<String>, error: Option<String>) -> String;
+    fn handle<'a>(
+        &'a self,
+        code: Option<String>,
+        state: Option<String>,
+        error: Option<String>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>>;
 }
 
 /// Placeholder used until Spotify is wired in.
 pub struct NoSpotify;
 impl OAuthCallback for NoSpotify {
-    fn handle(&self, _: Option<String>, _: Option<String>, _: Option<String>) -> String {
-        "<h1>Spotify is not set up in OpenMusix.</h1>".into()
+    fn handle<'a>(
+        &'a self,
+        _: Option<String>,
+        _: Option<String>,
+        _: Option<String>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>> {
+        Box::pin(async { "<h1>Spotify is not set up in OpenMusix.</h1>".to_string() })
     }
 }
 
@@ -83,7 +93,7 @@ struct CallbackQuery {
 }
 
 async fn spotify_callback(State(st): State<AppState>, Query(q): Query<CallbackQuery>) -> Html<String> {
-    Html(st.oauth.handle(q.code, q.state, q.error))
+    Html(st.oauth.handle(q.code, q.state, q.error).await)
 }
 
 fn frame(s: &crate::hub::Snapshot) -> Message {

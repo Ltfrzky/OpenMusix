@@ -14,7 +14,20 @@ export const api = {
   clearCache: () => invoke<void>("clear_lyrics_cache"),
   openLyricsFolder: () => invoke<void>("open_lyrics_folder"),
   systemFonts: () => invoke<string[]>("list_system_fonts"),
+  spotifyStatus: () => invoke<SpotifyStatus>("spotify_status"),
+  spotifyConnect: () => invoke<void>("spotify_connect"),
+  spotifyDisconnect: () => invoke<void>("spotify_disconnect"),
 };
+
+export interface SpotifyStatus {
+  connected: boolean;
+  clientIdSet: boolean;
+  redirectUri: string;
+}
+
+export function onSpotifyStatus(cb: (connected: boolean) => void): Promise<UnlistenFn> {
+  return listen<boolean>("spotify-status", (e) => cb(e.payload));
+}
 
 export function onSnapshot(cb: (s: Snapshot) => void): Promise<UnlistenFn> {
   return listen<Snapshot>("snapshot", (e) => cb(e.payload));
