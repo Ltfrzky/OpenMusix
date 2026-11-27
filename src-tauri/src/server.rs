@@ -54,6 +54,29 @@ pub struct Shutdown(#[allow(dead_code)] oneshot::Sender<()>);
 struct AppState {
     hub: Arc<Hub>,
     oauth: Arc<dyn OAuthCallback>,
+    port: u16,
+}
+
+/// Only our own names: blocks DNS-rebinding pages from reading the server.
+fn host_allowed(host: Option<&str>, port: u16) -> bool {
+    matches!(host, Some(h) if h == format!("127.0.0.1:{port}") || h == format!("localhost:{port}"))
+}
+
+/// Browsers let any site open a WebSocket to 127.0.0.1, so the upgrade checks who is asking:
+/// the overlay page itself, the app's own windows, or a non-browser client (no Origin).
+fn origin_allowed(origin: Option<&str>, port: u16) -> bool {
+    let Some(o) = origin else { return true };
+    let own = [format!("http://127.0.0.1:{port}"), format!("http://localhost:{port}")];
+    let app = ["http://tauri.localhost", "https://tauri.localhost", "tauri://localhost"];
+    own.iter().any(|x| x == o) || app.contains(&o) || (cfg!(debug_assertions) && o == "http://localhost:1420")
+}
+
+async fn guard_host(State(st): State<AppState>, req: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    let host = req.headers().get(header::HOST).and_then(|h| h.to_str().ok());
+    if !host_allowed(host, st.port) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    next.run(req).await
 }
 
 fn embedded(path: &str) -> Response {
@@ -101,7 +124,11 @@ fn frame(s: &crate::hub::Snapshot) -> Message {
     Message::Text(v.to_string().into())
 }
 
-async fn ws(State(st): State<AppState>, up: WebSocketUpgrade) -> Response {
+async fn ws(State(st): State<AppState>, headers: axum::http::HeaderMap, up: WebSocketUpgrade) -> Response {
+    let origin = headers.get(header::ORIGIN).and_then(|h| h.to_str().ok());
+    if !origin_allowed(origin, st.port) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
     up.on_upgrade(move |socket| pump(socket, st.hub))
 }
 
@@ -128,7 +155,8 @@ async fn pump(mut socket: WebSocket, hub: Arc<Hub>) {
     }
 }
 
-pub fn router(hub: Arc<Hub>, oauth: Arc<dyn OAuthCallback>) -> Router {
+pub fn router(hub: Arc<Hub>, oauth: Arc<dyn OAuthCallback>, port: u16) -> Router {
+    let state = AppState { hub, oauth, port };
     Router::new()
         .route("/", get(|| async { Redirect::temporary("/overlay") }))
         .route("/overlay", get(overlay))
@@ -136,13 +164,15 @@ pub fn router(hub: Arc<Hub>, oauth: Arc<dyn OAuthCallback>) -> Router {
         .route("/art/{key}", get(art))
         .route("/ws", get(ws))
         .route("/spotify/callback", get(spotify_callback))
-        .with_state(AppState { hub, oauth })
+        .layer(axum::middleware::from_fn_with_state(state.clone(), guard_host))
+        .with_state(state)
 }
 
 /// Serve on an already-bound listener (used by tests and by `start_server`).
 pub fn start_on(listener: tokio::net::TcpListener, hub: Arc<Hub>, oauth: Arc<dyn OAuthCallback>) -> Shutdown {
     let (tx, rx) = oneshot::channel::<()>();
-    let app = router(hub, oauth);
+    let port = listener.local_addr().map(|a| a.port()).unwrap_or(0);
+    let app = router(hub, oauth, port);
     tokio::spawn(async move {
         let r = axum::serve(listener, app)
             .with_graceful_shutdown(async move {
@@ -237,6 +267,37 @@ mod tests {
         let r = reqwest::get(format!("http://127.0.0.1:{port}/overlay")).await.unwrap();
         assert_eq!(r.status(), 200);
         assert!(r.text().await.unwrap().contains("<div id=\"app\""));
+    }
+
+    async fn ws_with_origin(port: u16, origin: &str) -> bool {
+        use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+        let mut req = format!("ws://127.0.0.1:{port}/ws").into_client_request().unwrap();
+        req.headers_mut().insert("origin", origin.parse().unwrap());
+        tokio_tungstenite::connect_async(req).await.is_ok()
+    }
+
+    #[tokio::test]
+    async fn ws_rejects_foreign_origin() {
+        let (_h, port, _sd) = boot().await;
+        assert!(!ws_with_origin(port, "https://evil.example").await);
+        assert!(!ws_with_origin(port, "http://127.0.0.1:1").await);
+    }
+
+    #[tokio::test]
+    async fn ws_allows_overlay_and_app_origins() {
+        let (_h, port, _sd) = boot().await;
+        assert!(ws_with_origin(port, &format!("http://127.0.0.1:{port}")).await);
+        assert!(ws_with_origin(port, "http://tauri.localhost").await);
+    }
+
+    #[tokio::test]
+    async fn rejects_foreign_host_header() {
+        let (_h, port, _sd) = boot().await;
+        let c = reqwest::Client::new();
+        let r = c.get(format!("http://127.0.0.1:{port}/overlay")).header("host", format!("evil.example:{port}")).send().await.unwrap();
+        assert_eq!(r.status(), 403);
+        let ok = c.get(format!("http://127.0.0.1:{port}/overlay")).header("host", format!("localhost:{port}")).send().await.unwrap();
+        assert_eq!(ok.status(), 200);
     }
 
     #[tokio::test]

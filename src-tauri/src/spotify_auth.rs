@@ -75,17 +75,23 @@ struct Access {
 }
 
 pub struct SpotifyAuth {
+    keyring_user: String,
     http: reqwest::Client,
     pending: Mutex<Option<Pending>>,
     access: Mutex<Option<Access>>,
     connected: watch::Sender<bool>,
 }
 
-fn keyring_entry() -> Result<keyring::Entry, AuthError> {
-    keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| AuthError::Other(e.to_string()))
+fn keyring_entry_for(user: &str) -> Result<keyring::Entry, AuthError> {
+    keyring::Entry::new(KEYRING_SERVICE, user).map_err(|e| AuthError::Other(e.to_string()))
+}
+
+fn escape(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;")
 }
 
 fn page(title: &str, body: &str) -> String {
+    let (title, body) = (escape(title), escape(body));
     format!(
         "<!doctype html><meta charset=utf-8><title>OpenMusix</title>\
          <body style=\"font:15px system-ui;background:#101114;color:#ededef;display:grid;place-items:center;height:100vh;margin:0\">\
@@ -95,13 +101,27 @@ fn page(title: &str, body: &str) -> String {
 
 impl SpotifyAuth {
     pub fn new() -> Self {
-        let connected = keyring_entry().and_then(|e| e.get_password().map_err(|e| AuthError::Other(e.to_string()))).is_ok();
+        Self::with_keyring_user(KEYRING_USER)
+    }
+
+    /// Separate credential slot (tests use their own so the real token is never touched).
+    pub fn with_keyring_user(user: &str) -> Self {
+        let connected = keyring_entry_for(user).and_then(|e| e.get_password().map_err(|e| AuthError::Other(e.to_string()))).is_ok();
         Self {
+            keyring_user: user.to_string(),
             http: reqwest::Client::builder().timeout(Duration::from_secs(10)).build().expect("http client"),
             pending: Mutex::new(None),
             access: Mutex::new(None),
             connected: watch::Sender::new(connected),
         }
+    }
+
+    fn keyring_entry(&self) -> Result<keyring::Entry, AuthError> {
+        keyring_entry_for(&self.keyring_user)
+    }
+
+    pub fn has_pending(&self) -> bool {
+        self.pending.lock().unwrap().is_some()
     }
 
     pub fn is_connected(&self) -> bool {
@@ -123,7 +143,7 @@ impl SpotifyAuth {
     }
 
     pub fn disconnect(&self) {
-        if let Ok(e) = keyring_entry() {
+        if let Ok(e) = self.keyring_entry() {
             let _ = e.delete_credential();
         }
         *self.access.lock().unwrap() = None;
@@ -144,7 +164,7 @@ impl SpotifyAuth {
 
     fn store(&self, t: TokenResponse) -> Result<String, AuthError> {
         if let Some(r) = &t.refresh_token {
-            keyring_entry()?.set_password(r).map_err(|e| AuthError::Other(e.to_string()))?;
+            self.keyring_entry()?.set_password(r).map_err(|e| AuthError::Other(e.to_string()))?;
         }
         *self.access.lock().unwrap() =
             Some(Access { token: t.access_token.clone(), expires_at: Instant::now() + Duration::from_secs(t.expires_in) });
@@ -157,7 +177,7 @@ impl SpotifyAuth {
             && a.expires_at > Instant::now() + Duration::from_secs(60) {
                 return Ok(a.token.clone());
             }
-        let refresh = keyring_entry()?.get_password().map_err(|_| AuthError::NotConnected)?;
+        let refresh = self.keyring_entry()?.get_password().map_err(|_| AuthError::NotConnected)?;
         let form = [("grant_type", "refresh_token"), ("refresh_token", refresh.as_str()), ("client_id", client_id)];
         match self.token_request(&form).await {
             Ok(t) => self.store(t),
@@ -174,17 +194,25 @@ impl SpotifyAuth {
         *self.access.lock().unwrap() = None;
     }
 
-    async fn finish(&self, code: Option<String>, state: Option<String>, error: Option<String>) -> String {
+    pub(crate) async fn finish(&self, code: Option<String>, state: Option<String>, error: Option<String>) -> String {
         if let Some(e) = error {
             return page("Spotify was not connected", &format!("Spotify said: {e}. You can close this tab."));
         }
-        let pending = self.pending.lock().unwrap().take();
-        let Some(p) = pending.filter(|p| p.created.elapsed() < Duration::from_secs(600)) else {
-            return page("Link expired", "Start Connect Spotify again from OpenMusix.");
+        // Peek before taking: a forged callback (wrong state) must not cancel the real login.
+        let p = {
+            let mut guard = self.pending.lock().unwrap();
+            match guard.as_ref() {
+                None => return page("Link expired", "Start Connect Spotify again from OpenMusix."),
+                Some(p) if p.created.elapsed() >= Duration::from_secs(600) => {
+                    *guard = None;
+                    return page("Link expired", "Start Connect Spotify again from OpenMusix.");
+                }
+                Some(p) if state.as_deref() != Some(p.state.as_str()) => {
+                    return page("Something didn't match", "Start Connect Spotify again from OpenMusix.");
+                }
+                Some(_) => guard.take().expect("checked above"),
+            }
         };
-        if state.as_deref() != Some(p.state.as_str()) {
-            return page("Something didn't match", "Start Connect Spotify again from OpenMusix.");
-        }
         let Some(code) = code else { return page("Spotify was not connected", "No authorization code was returned.") };
         let redirect = redirect_uri(p.port);
         let form = [
@@ -232,6 +260,19 @@ mod tests {
         assert_eq!(v.len(), 64);
         assert!(v.chars().all(|c| c.is_ascii_alphanumeric() || "-._~".contains(c)));
         assert_ne!(v, new_verifier());
+    }
+    #[tokio::test] async fn callback_page_escapes_html() {
+        let a = SpotifyAuth::with_keyring_user("test-escape");
+        let html = a.finish(None, None, Some("<script>alert(1)</script>".into())).await;
+        assert!(!html.contains("<script>"));
+        assert!(html.contains("&lt;script&gt;"));
+    }
+    #[tokio::test] async fn bogus_state_keeps_pending_login() {
+        let a = SpotifyAuth::with_keyring_user("test-state");
+        a.begin("cid", 7878);
+        let html = a.finish(Some("code".into()), Some("wrong".into()), None).await;
+        assert!(html.contains("match"));
+        assert!(a.has_pending(), "a forged callback must not cancel the real login");
     }
     #[test] fn authorize_url_uses_loopback_ip() {
         let u = authorize_url("cid", 7878, "ch", "st");
