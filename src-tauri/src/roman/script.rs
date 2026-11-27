@@ -41,8 +41,9 @@ pub fn runs(line: &str) -> Vec<(Script, &str)> {
 }
 
 /// Whether any line has kana; then Han characters are read as Japanese.
+/// ・ and ー alone don't count: they turn up in Chinese text and credits too.
 pub fn song_has_kana(lines: &[&str]) -> bool {
-    lines.iter().any(|l| l.chars().any(|c| script_of(c) == Script::Kana))
+    lines.iter().any(|l| l.chars().any(|c| script_of(c) == Script::Kana && !matches!(c, '\u{30FB}' | '\u{30FC}')))
 }
 
 #[cfg(test)]
@@ -61,6 +62,10 @@ mod tests {
     #[test] fn runs_split_by_script() {
         assert_eq!(runs("Hi 中国あ한"), vec![(Script::Other, "Hi "), (Script::Han, "中国"), (Script::Kana, "あ"), (Script::Hangul, "한")]);
         assert!(runs("").is_empty());
+    }
+    #[test] fn middle_dot_and_long_mark_alone_are_not_japanese() {
+        assert!(!song_has_kana(&["中国・台湾", "我爱你ー"]));
+        assert!(song_has_kana(&["ラーメン"]));
     }
     #[test] fn kana_detection() {
         assert!(song_has_kana(&["中国", "愛してる"]));

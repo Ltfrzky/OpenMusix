@@ -138,7 +138,7 @@ struct PackProgress {
 pub async fn install_pack(app: AppHandle, ctx: Ctx<'_>, id: RomanLang) -> Result<(), String> {
     let ctx = ctx.inner().clone();
     let h = app.clone();
-    let _ = app.emit("packs-changed", ctx.packs.list());
+    // The first progress event (0%) arrives once the pack is registered as installing.
     let res = ctx.packs.install(id, move |pct| {
         let _ = h.emit("pack-progress", PackProgress { id, pct });
     }).await;

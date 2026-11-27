@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Notify;
 
 /// One downloadable pack, as listed in the manifest compiled into the app.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,8 +93,43 @@ struct PackMeta {
 }
 
 struct Installing {
-    cancel: Arc<AtomicBool>,
+    cancel: Arc<Cancel>,
     pct: u8,
+}
+
+/// Cancellation that also wakes a download stuck waiting on the network.
+#[derive(Default)]
+struct Cancel {
+    flag: AtomicBool,
+    wake: Notify,
+}
+
+impl Cancel {
+    fn set(&self) {
+        self.flag.store(true, Ordering::SeqCst);
+        self.wake.notify_one();
+    }
+    fn is_set(&self) -> bool {
+        self.flag.load(Ordering::SeqCst)
+    }
+    async fn wait(&self) {
+        if !self.is_set() {
+            self.wake.notified().await;
+        }
+    }
+}
+
+/// Rename, retrying briefly: antivirus scanners often hold freshly unzipped files on Windows.
+fn rename_with_retry(from: &Path, to: &Path) -> std::io::Result<()> {
+    let mut last = None;
+    for _ in 0..5 {
+        match std::fs::rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(e) => last = Some(e),
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    Err(last.unwrap_or_else(|| std::io::Error::other("rename failed")))
 }
 
 pub struct PackManager {
@@ -154,6 +190,7 @@ impl PackManager {
         let http = reqwest::Client::builder()
             .user_agent(crate::lyrics::lrclib::user_agent())
             .connect_timeout(Duration::from_secs(30))
+            .read_timeout(Duration::from_secs(30))
             .build()
             .expect("http client");
         let m = Self { dir, specs, roman, http, installing: Mutex::new(HashMap::new()), broken: Mutex::new(HashSet::new()) };
@@ -226,7 +263,7 @@ impl PackManager {
     /// Download, verify, unzip and load a pack. Leaves no partial files behind on failure.
     pub async fn install(&self, id: RomanLang, on_progress: impl Fn(u8) + Send) -> Result<(), PackError> {
         let spec = self.specs.iter().find(|s| s.id == id).cloned().ok_or(PackError::Unknown)?;
-        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel = Arc::new(Cancel::default());
         {
             let mut map = self.installing.lock().expect("installing lock");
             if map.contains_key(&id) {
@@ -235,6 +272,8 @@ impl PackManager {
             map.insert(id, Installing { cancel: cancel.clone(), pct: 0 });
         }
         let _guard = InstallGuard(&self.installing, id);
+        // Lets the caller show "installing" right away; list() already reports it.
+        on_progress(0);
         let part = self.dir.join(format!("{}.part", folder(id)));
         let tmp = self.dir.join(format!("{}.tmp", folder(id)));
         let res = self.install_inner(&spec, &cancel, &part, &tmp, &on_progress).await;
@@ -246,14 +285,17 @@ impl PackManager {
     async fn install_inner(
         &self,
         spec: &PackSpec,
-        cancel: &AtomicBool,
+        cancel: &Cancel,
         part: &Path,
         tmp: &Path,
         on_progress: &(impl Fn(u8) + Send),
     ) -> Result<(), PackError> {
         std::fs::create_dir_all(&self.dir)?;
         let net = |e: reqwest::Error| PackError::Network(e.to_string());
-        let mut resp = self.http.get(&spec.url).send().await.map_err(net)?;
+        let mut resp = tokio::select! {
+            r = self.http.get(&spec.url).send() => r.map_err(net)?,
+            _ = cancel.wait() => return Err(PackError::Cancelled),
+        };
         if !resp.status().is_success() {
             return Err(PackError::Network(format!("HTTP {}", resp.status())));
         }
@@ -262,10 +304,11 @@ impl PackManager {
         let mut got: u64 = 0;
         let mut last_pct = 0u8;
         loop {
-            if cancel.load(Ordering::SeqCst) {
-                return Err(PackError::Cancelled);
-            }
-            let Some(chunk) = resp.chunk().await.map_err(net)? else { break };
+            let next = tokio::select! {
+                r = resp.chunk() => r.map_err(net)?,
+                _ = cancel.wait() => return Err(PackError::Cancelled),
+            };
+            let Some(chunk) = next else { break };
             file.write_all(&chunk).await?;
             hasher.update(&chunk);
             got += chunk.len() as u64;
@@ -280,7 +323,7 @@ impl PackManager {
         }
         file.flush().await?;
         drop(file);
-        if cancel.load(Ordering::SeqCst) {
+        if cancel.is_set() {
             return Err(PackError::Cancelled);
         }
         let digest = hex(&hasher.finalize());
@@ -295,10 +338,16 @@ impl PackManager {
         std::fs::write(tmp.join("pack.json"), serde_json::to_vec(&meta).map_err(|e| PackError::BadArchive(e.to_string()))?)?;
         let final_dir = self.dir.join(folder(spec.id));
         self.unload(spec.id);
-        if final_dir.exists() {
-            std::fs::remove_dir_all(&final_dir)?;
+        let swapped = (|| {
+            if final_dir.exists() {
+                std::fs::remove_dir_all(&final_dir)?;
+            }
+            rename_with_retry(tmp, &final_dir)
+        })();
+        if let Err(e) = swapped {
+            self.recover(spec.id);
+            return Err(e.into());
         }
-        std::fs::rename(tmp, &final_dir)?;
         if let Err(e) = self.load(spec.id) {
             self.broken.lock().expect("broken lock").insert(spec.id);
             return Err(PackError::BadArchive(e.to_string()));
@@ -308,10 +357,20 @@ impl PackManager {
         Ok(())
     }
 
-    /// Ask a running install to stop at its next chunk.
+    /// Stop a running install, even one stalled waiting on the network.
     pub fn cancel(&self, id: RomanLang) {
         if let Some(i) = self.installing.lock().expect("installing lock").get(&id) {
-            i.cancel.store(true, Ordering::SeqCst);
+            i.cancel.set();
+        }
+    }
+
+    /// After a failed delete or swap: reload whatever is left, or mark the pack broken.
+    fn recover(&self, id: RomanLang) {
+        let mut broken = self.broken.lock().expect("broken lock");
+        if self.meta(id).is_none() || self.load(id).is_ok() {
+            broken.remove(&id);
+        } else {
+            broken.insert(id);
         }
     }
 
@@ -321,8 +380,11 @@ impl PackManager {
         }
         self.unload(id);
         let dir = self.dir.join(folder(id));
-        if dir.exists() {
-            std::fs::remove_dir_all(dir)?;
+        if dir.exists()
+            && let Err(e) = std::fs::remove_dir_all(dir)
+        {
+            self.recover(id);
+            return Err(e.into());
         }
         self.broken.lock().expect("broken lock").remove(&id);
         Ok(())
@@ -457,6 +519,57 @@ mod tests {
         assert!(matches!(r, Err(PackError::Cancelled)), "{r:?}");
         assert!(leftovers(&d.path().join("packs")).is_empty());
         assert!(!d.path().join("packs/zh").exists());
+    }
+
+    #[tokio::test]
+    async fn cancel_interrupts_a_stalled_download() {
+        let body = make_zip(&[("pinyin.txt", FIX.as_bytes())]);
+        let s = serve(body.clone(), 10_000).await;
+        let d = tempfile::tempdir().unwrap();
+        let m = PackManager::new(d.path().join("packs"), vec![spec(&s, &body)], Arc::new(Romanizer::new()));
+        let started = std::time::Instant::now();
+        let (r, _) = tokio::join!(m.install(RomanLang::Zh, |_| {}), async {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            m.cancel(RomanLang::Zh)
+        });
+        assert!(matches!(r, Err(PackError::Cancelled)), "{r:?}");
+        assert!(started.elapsed() < Duration::from_secs(2), "cancel took {:?}", started.elapsed());
+    }
+
+    #[tokio::test]
+    async fn first_progress_arrives_once_installing_is_listed() {
+        let body = make_zip(&[("pinyin.txt", FIX.as_bytes())]);
+        let s = serve(body.clone(), 0).await;
+        let d = tempfile::tempdir().unwrap();
+        let m = PackManager::new(d.path().join("packs"), vec![spec(&s, &body)], Arc::new(Romanizer::new()));
+        let first: Mutex<Option<(u8, PackState)>> = Mutex::new(None);
+        m.install(RomanLang::Zh, |p| {
+            let mut f = first.lock().unwrap();
+            if f.is_none() {
+                *f = Some((p, state(&m, RomanLang::Zh)));
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(first.lock().unwrap().take(), Some((0, PackState::Installing { pct: 0 })));
+    }
+
+    #[tokio::test]
+    async fn failed_remove_keeps_list_and_romanizer_consistent() {
+        let body = make_zip(&[("a-locked.txt", b"x"), ("pinyin.txt", FIX.as_bytes())]);
+        let s = serve(body.clone(), 0).await;
+        let d = tempfile::tempdir().unwrap();
+        let roman = Arc::new(Romanizer::new());
+        let m = PackManager::new(d.path().join("packs"), vec![spec(&s, &body)], roman.clone());
+        m.install(RomanLang::Zh, |_| {}).await.unwrap();
+        // Another process (antivirus, indexer) holding a file open without sharing blocks deletion.
+        use std::os::windows::fs::OpenOptionsExt;
+        let held = std::fs::OpenOptions::new().read(true).share_mode(0).open(d.path().join("packs/zh/a-locked.txt")).unwrap();
+        let r = m.remove(RomanLang::Zh);
+        let st = state(&m, RomanLang::Zh);
+        drop(held);
+        assert!(r.is_err(), "remove should fail on the held file");
+        assert_eq!(st == PackState::Installed, roman.has(RomanLang::Zh), "listed {st:?} but loaded={}", roman.has(RomanLang::Zh));
     }
 
     #[test]

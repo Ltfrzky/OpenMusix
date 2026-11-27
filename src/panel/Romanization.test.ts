@@ -97,6 +97,13 @@ test("missing pack hint appears and installs", async () => {
   expect(installPack).toHaveBeenCalledWith("ja");
 });
 
+test("install failure from the hint is shown", async () => {
+  installPack.mockRejectedValueOnce("download failed: offline");
+  const { getByText, findByText } = render(NowPlayingCard, { snapshot: snap({ romanMissing: ["ja"] }), artBase: "" });
+  await fireEvent.click(getByText("Install"));
+  expect(await findByText("download failed: offline")).toBeTruthy();
+});
+
 test("missing pack hint hidden when romanization is off", () => {
   const { queryByText } = render(NowPlayingCard, { snapshot: snap({ romanMissing: ["ja"], romanize: { enabled: false, display: "below" } }), artBase: "" });
   expect(queryByText(/Install the Japanese pack/)).toBeNull();

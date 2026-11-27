@@ -91,7 +91,8 @@ impl Romanizer {
             for (s, text) in groups {
                 let roman = match s {
                     Script::Other => None,
-                    Script::Hangul => Some(ko::romanize(&text)),
+                    // Bare jamo like ㅋㅋㅋ have no syllables to romanize; leave them as they are.
+                    Script::Hangul => Some(ko::romanize(&text)).filter(|r| *r != text),
                     Script::Kana => match ja.as_ref() {
                         Some(j) => Some(j.romanize(&text)),
                         None => {
@@ -240,6 +241,10 @@ mod tests {
         let r = Romanizer::new().romanize(&["愛してる", "空"]);
         assert_eq!(r.missing, vec![RomanLang::Ja]);
         assert_eq!(r.lines, vec![None, None]);
+    }
+    #[test] fn jamo_only_line_is_none() {
+        let r = Romanizer::new().romanize(&["ㅋㅋㅋ", "사랑 ㅠㅠ"]);
+        assert_eq!(r.lines, vec![None, Some("sarang ㅠㅠ".into())]);
     }
     #[test] fn korean_punctuation_spacing() {
         assert_eq!(Romanizer::new().romanize(&["(사랑해!)"]).lines, vec![Some("(saranghae!)".into())]);

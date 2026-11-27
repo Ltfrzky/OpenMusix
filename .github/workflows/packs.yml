@@ -57,10 +57,17 @@ jobs:
           if [ -n "$lic" ]; then cp "$lic" ../ja/LICENSE; else curl -fsSL -o ../ja/LICENSE https://raw.githubusercontent.com/taku910/mecab/master/mecab-ipadic/COPYING; fi
           cd ../ja && 7z a -tzip -bd -r ../../ja-ipadic-v1.zip . > /dev/null
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+      # The Tauri crate embeds ../dist at compile time, so the frontend must be built first (as in ci.yml).
+      - run: npm ci
+      - run: npm run build
 
       - name: Check the Japanese pack with the app's own code
         run: |

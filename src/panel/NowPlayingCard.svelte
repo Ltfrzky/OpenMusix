@@ -7,10 +7,14 @@
   const LANG: Record<RomanLang, string> = { zh: "Chinese", ja: "Japanese", ko: "Korean" };
   const missing = $derived(snapshot?.nowPlaying && snapshot.romanize.enabled ? snapshot.romanMissing : []);
   let installing: RomanLang | null = $state(null);
+  let installError: string | null = $state(null);
   async function install(id: RomanLang) {
     installing = id;
+    installError = null;
     try {
       await api.installPack(id);
+    } catch (e) {
+      installError = String(e);
     } finally {
       installing = null;
     }
@@ -62,6 +66,7 @@
           <button class="btn" disabled={installing !== null} onclick={() => install(id)}>Install</button>
         </p>
       {/each}
+      {#if missing.length && installError}<p class="roman-hint err">{installError}</p>{/if}
     {:else}
       <h1 class="title muted">Nothing playing</h1>
       <p class="artist">Play a song in Spotify, YouTube Music or any player — it shows up here.</p>
@@ -174,6 +179,9 @@
     margin-top: 4px;
     color: var(--ink-3);
     font-size: 12px;
+  }
+  .roman-hint.err {
+    color: var(--onair);
   }
   .idle .artist {
     white-space: normal;
