@@ -7,6 +7,8 @@ use crate::playback::{merger::merge, PlaybackEvent, SourceSnapshot};
 use crate::server::{start_server, OAuthCallback, ServerStatus, Shutdown};
 use crate::settings::SettingsStore;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, watch, Mutex, Notify};
 
@@ -45,10 +47,33 @@ impl AppCtx {
     }
 }
 
+const DURATION_TOLERANCE_MS: u64 = 3000;
+/// Backoff between lyrics retries after a network error (Wi-Fi not up yet, LRCLIB timeout).
+const RETRY_DELAYS: [Duration; 3] = [Duration::from_secs(5), Duration::from_secs(15), Duration::from_secs(45)];
+
+/// Whether the playing track needs a (new) lyrics lookup: a new track, or the same track
+/// whose duration just became known or changed beyond the guard (late GSMTC/Spotify data).
+pub fn needs_resolve(prev: Option<&(String, Option<u64>)>, key: &str, dur: Option<u64>) -> bool {
+    match prev {
+        None => true,
+        Some((k, d)) => {
+            k != key
+                || match (d, dur) {
+                    (None, Some(_)) => true,
+                    (Some(a), Some(b)) => a.abs_diff(b) > DURATION_TOLERANCE_MS,
+                    _ => false,
+                }
+        }
+    }
+}
+
 /// Consume playback events forever, keeping the hub's now-playing and lyrics current.
 pub async fn run_pipeline(ctx: Arc<AppCtx>, mut rx: mpsc::Receiver<PlaybackEvent>) {
     let mut win: Option<SourceSnapshot> = None;
     let mut sp: Option<SourceSnapshot> = None;
+    let mut resolved: Option<(String, Option<u64>)> = None;
+    // Bumped for every lookup; a lookup may publish only while it is still the latest.
+    let generation = Arc::new(AtomicU64::new(0));
     while let Some(ev) = rx.recv().await {
         match ev {
             PlaybackEvent::Windows(s) => {
@@ -60,33 +85,41 @@ pub async fn run_pipeline(ctx: Arc<AppCtx>, mut rx: mpsc::Receiver<PlaybackEvent
         let merged = merge(win.as_ref(), sp.as_ref());
         let _ = ctx.spotify_used.send(merged.spotify_used);
         let key = merged.now.as_ref().map(|n| track_key(&n.track));
-        let changed = ctx.hub.current().track_key != key;
+        let duration = merged.now.as_ref().and_then(|n| n.track.duration_ms);
+        let lookup = match &key {
+            Some(k) => needs_resolve(resolved.as_ref(), k, duration),
+            None => false,
+        };
+        if key.is_none() {
+            resolved = None;
+        }
         let settings = ctx.settings.get();
         ctx.hub.modify(|snap| {
             snap.now_playing = merged.now.clone();
-            if changed {
+            if snap.track_key != key || lookup {
                 snap.track_key = key.clone();
                 snap.lyrics = LyricsStatus::Loading;
             }
             project_settings(&settings, snap);
         });
-        if changed
-            && let Some(now) = merged.now {
-                let hub = ctx.hub.clone();
-                let lyrics = ctx.lyrics.clone();
-                let key = key.unwrap_or_default();
-                tokio::spawn(async move {
-                    let h2 = hub.clone();
-                    let current = move || h2.current().track_key.unwrap_or_default();
-                    if let Some(status) = lyrics.resolve_for(now.track, current).await {
-                        hub.modify(|s| {
-                            if s.track_key.as_deref() == Some(key.as_str()) {
-                                s.lyrics = status;
-                            }
-                        });
-                    }
-                });
-            }
+        if lookup {
+            let (Some(now), Some(key)) = (merged.now, key) else { continue };
+            resolved = Some((key, duration));
+            let my_gen = generation.fetch_add(1, Ordering::SeqCst) + 1;
+            let hub = ctx.hub.clone();
+            let lyrics = ctx.lyrics.clone();
+            let latest = generation.clone();
+            tokio::spawn(async move {
+                let is_current = || latest.load(Ordering::SeqCst) == my_gen;
+                if let Some(status) = lyrics.resolve_until(&now.track, is_current, &RETRY_DELAYS).await {
+                    hub.modify(|s| {
+                        if latest.load(Ordering::SeqCst) == my_gen {
+                            s.lyrics = status;
+                        }
+                    });
+                }
+            });
+        }
     }
 }
 
@@ -100,4 +133,16 @@ pub async fn forward_to_panel(app: AppHandle, hub: Arc<Hub>) {
             return;
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn prev(k: &str, d: Option<u64>) -> (String, Option<u64>) { (k.to_string(), d) }
+    #[test] fn first_track_resolves() { assert!(needs_resolve(None, "a|b", None)); }
+    #[test] fn same_track_same_duration_does_not() { assert!(!needs_resolve(Some(&prev("a|b", Some(200_000))), "a|b", Some(201_000))); }
+    #[test] fn key_change_resolves() { assert!(needs_resolve(Some(&prev("a|b", Some(200_000))), "a|c", Some(200_000))); }
+    #[test] fn late_duration_resolves() { assert!(needs_resolve(Some(&prev("a|b", None)), "a|b", Some(200_000))); }
+    #[test] fn duration_jump_resolves() { assert!(needs_resolve(Some(&prev("a|b", Some(200_000))), "a|b", Some(262_000))); }
+    #[test] fn losing_duration_does_not() { assert!(!needs_resolve(Some(&prev("a|b", Some(200_000))), "a|b", None)); }
 }
