@@ -39,6 +39,27 @@ pub fn pick_session(sessions: &[SessionInfo], current: Option<usize>) -> Option<
         .or(if sessions.is_empty() { None } else { Some(0) })
 }
 
+/// How often the reader re-checks all sessions even without events. Windows only reports
+/// playback changes for the session we subscribe to, so another session that starts or
+/// resumes playing would otherwise go unnoticed.
+pub const RESCAN_INTERVAL: Duration = Duration::from_millis(1500);
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Wake {
+    Event,
+    Rescan,
+    Closed,
+}
+
+/// Block until an event arrives or `timeout` passes.
+pub fn wait_for_wake(rx: &std_mpsc::Receiver<()>, timeout: Duration) -> Wake {
+    match rx.recv_timeout(timeout) {
+        Ok(()) => Wake::Event,
+        Err(std_mpsc::RecvTimeoutError::Timeout) => Wake::Rescan,
+        Err(std_mpsc::RecvTimeoutError::Disconnected) => Wake::Closed,
+    }
+}
+
 pub fn now_unix_ms() -> i64 {
     SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
@@ -174,10 +195,16 @@ mod imp {
         let mut last_track_id = String::new();
         let mut last_sent: Option<Option<SourceSnapshot>> = None;
         let _ = poke.send(());
-        while wake.recv().is_ok() {
-            // Debounce bursts (a track change fires several events at once).
-            std::thread::sleep(Duration::from_millis(50));
-            while wake.try_recv().is_ok() {}
+        loop {
+            match wait_for_wake(&wake, RESCAN_INTERVAL) {
+                Wake::Closed => break,
+                Wake::Event => {
+                    // Debounce bursts (a track change fires several events at once).
+                    std::thread::sleep(Duration::from_millis(50));
+                    while wake.try_recv().is_ok() {}
+                }
+                Wake::Rescan => {}
+            }
 
             // A session can also change state without SessionsChanged (e.g. one starts playing),
             // so the choice is re-evaluated on every event.
@@ -237,4 +264,25 @@ mod tests {
     #[test] fn falls_back_to_current() { assert_eq!(pick_session(&[si("a", false), si("b", false)], Some(1)), Some(1)); }
     #[test] fn paused_spotify_beats_other_paused() { assert_eq!(pick_session(&[si("a", false), si("Spotify.exe", false)], Some(0)), Some(1)); }
     #[test] fn empty() { assert_eq!(pick_session(&[], None), None); }
+}
+
+#[cfg(test)]
+mod wake_tests {
+    use super::*;
+    #[test] fn wait_returns_on_timeout_without_events() {
+        let (_tx, rx) = std_mpsc::channel::<()>();
+        let t = std::time::Instant::now();
+        assert_eq!(wait_for_wake(&rx, Duration::from_millis(40)), Wake::Rescan);
+        assert!(t.elapsed() < Duration::from_millis(500));
+    }
+    #[test] fn wait_returns_on_event() {
+        let (tx, rx) = std_mpsc::channel::<()>();
+        tx.send(()).unwrap();
+        assert_eq!(wait_for_wake(&rx, Duration::from_secs(5)), Wake::Event);
+    }
+    #[test] fn wait_reports_closed() {
+        let (tx, rx) = std_mpsc::channel::<()>();
+        drop(tx);
+        assert_eq!(wait_for_wake(&rx, Duration::from_secs(5)), Wake::Closed);
+    }
 }
