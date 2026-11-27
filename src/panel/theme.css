@@ -1,0 +1,219 @@
+/* OpenMusix booth: graphite surfaces lit by one amber tally light. */
+:root {
+  --booth: #101114;
+  --booth-raised: #15161a;
+  --booth-high: #1b1c21;
+  --booth-inset: #0b0c0e;
+
+  --ink-1: #ededef;
+  --ink-2: #a8a9af;
+  --ink-3: #74757c;
+  --ink-4: #4b4c52;
+
+  --rule-soft: rgba(255, 255, 255, 0.045);
+  --rule: rgba(255, 255, 255, 0.075);
+  --rule-strong: rgba(255, 255, 255, 0.13);
+
+  --tally: #f5b544;
+  --tally-ink: #1a1204;
+  --tally-glow: rgba(245, 181, 68, 0.16);
+  --onair: #e5484d;
+  --live: #4cc38a;
+  --warn-bg: rgba(229, 72, 77, 0.1);
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+
+  --font-ui: "Inter Variable", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Outfit Variable", "Segoe UI", system-ui, sans-serif;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--booth);
+  color: var(--ink-1);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+h2 {
+  font-size: 15px;
+}
+p {
+  margin: 0;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-1);
+  font-size: 13px;
+}
+.hint {
+  color: var(--ink-3);
+  font-size: 12px;
+  text-wrap: pretty;
+}
+.card {
+  background: var(--booth-raised);
+  border-radius: var(--r-lg);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  padding: var(--sp-4);
+}
+.card > header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--sp-4);
+}
+.icon {
+  font-family: "Material Symbols Rounded";
+  font-size: 18px;
+  line-height: 1;
+  font-variation-settings: "FILL" 0, "wght" 400, "opsz" 20;
+  user-select: none;
+}
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-height: 36px;
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--booth-high);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  color: var(--ink-1);
+  font: 500 13px var(--font-ui);
+  cursor: pointer;
+  transition-property: background-color, box-shadow, scale, opacity;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease);
+}
+.btn:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 1px var(--rule-strong);
+  background: #202127;
+}
+.btn:active:not(:disabled) {
+  scale: 0.96;
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.btn.ghost {
+  background: transparent;
+}
+.btn.tally {
+  background: var(--tally);
+  color: var(--tally-ink);
+  box-shadow: none;
+}
+.btn.tally:hover:not(:disabled) {
+  background: #f8c262;
+}
+.btn:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--tally);
+  outline-offset: 2px;
+}
+
+input[type="text"],
+input[type="number"],
+select {
+  min-height: 36px;
+  width: 100%;
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--booth-inset);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  color: var(--ink-1);
+  font: 13px var(--font-ui);
+  user-select: text;
+}
+input[type="color"] {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  cursor: pointer;
+}
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--tally);
+  height: 24px;
+  margin: 0;
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  min-height: 44px;
+  cursor: pointer;
+}
+.switch input {
+  appearance: none;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--booth-high);
+  box-shadow: inset 0 0 0 1px var(--rule-strong);
+  position: relative;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease);
+}
+.switch input::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ink-2);
+  transition-property: translate, background-color;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease);
+}
+.switch input:checked {
+  background: var(--tally);
+}
+.switch input:checked::after {
+  translate: 14px 0;
+  background: var(--tally-ink);
+}
