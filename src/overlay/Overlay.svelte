@@ -40,6 +40,8 @@
     if (result.kind === "instrumental") return "♪ Instrumental";
     return null;
   });
+  const roman = $derived(snapshot?.romanize.enabled ? snapshot.roman : null);
+  const display = $derived(snapshot?.romanize.display ?? "below");
   const plainText = $derived(result?.kind === "plainOnly" && snapshot?.showPlainLyrics ? result.value : null);
   const artUrl = $derived(np?.track.artUrl ? (np.track.artUrl.startsWith("/") ? artBase + np.track.artUrl : np.track.artUrl) : null);
 
@@ -70,9 +72,9 @@
   >
     {#if np}
       {#if mode === "focus"}
-        <FocusView {lines} {index} {style} track={np.track} {message} {plainText} />
+        <FocusView {lines} {index} {style} track={np.track} {message} {plainText} {roman} {display} />
       {:else}
-        <WidgetView {lines} {index} {style} track={np.track} {message} {plainText} {artUrl} />
+        <WidgetView {lines} {index} {style} track={np.track} {message} {plainText} {artUrl} {roman} {display} />
       {/if}
     {/if}
   </div>

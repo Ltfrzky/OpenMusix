@@ -48,3 +48,35 @@ test("idle hidden when hideWhenIdle", () => {
   const { container } = render(Overlay, { snapshot: snap(synced, { nowPlaying: null, hideWhenIdle: true }) });
   expect(container.querySelector(".om-root")).toBeNull();
 });
+
+const zh: LyricsStatus = { status: "ready", result: { kind: "synced", value: [{ timeMs: 0, text: "你好" }] } };
+const on = (display: "below" | "replace") => ({ romanize: { enabled: true, display }, roman: ["nǐ hǎo"] as (string | null)[] });
+
+test("renders roman under the line", () => {
+  const { getByText } = render(Overlay, { snapshot: snap(zh, on("below")) });
+  expect(getByText("你好")).toBeTruthy();
+  expect(getByText("nǐ hǎo").classList.contains("om-roman")).toBe(true);
+});
+test("replace shows only roman", () => {
+  const { getByText, queryByText } = render(Overlay, { snapshot: snap(zh, on("replace")) });
+  expect(queryByText("你好")).toBeNull();
+  expect(getByText("nǐ hǎo")).toBeTruthy();
+});
+test("replace falls back to original for null", () => {
+  const { getByText } = render(Overlay, { snapshot: snap(zh, { romanize: { enabled: true, display: "replace" }, roman: [null] }) });
+  expect(getByText("你好")).toBeTruthy();
+});
+test("null roman renders as today", () => {
+  const { container } = render(Overlay, { snapshot: snap(zh) });
+  expect(container.querySelector(".om-roman")).toBeNull();
+});
+test("plain lyrics romanized per line", () => {
+  const plain: LyricsStatus = { status: "ready", result: { kind: "plainOnly", value: "你好\n再见" } };
+  const { container } = render(Overlay, { snapshot: snap(plain, { showPlainLyrics: true, romanize: { enabled: true, display: "below" }, roman: ["nǐ hǎo", null] }) });
+  expect(container.querySelectorAll(".plain-line").length).toBe(2);
+  expect(container.querySelectorAll(".om-roman").length).toBe(1);
+});
+test("widget view also renders roman", () => {
+  const { container } = render(Overlay, { snapshot: snap(zh, on("below")), pinnedMode: "widget" });
+  expect(container.querySelector(".om-roman")?.textContent).toBe("nǐ hǎo");
+});
