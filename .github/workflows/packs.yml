@@ -1,0 +1,79 @@
+name: Build language packs
+
+# Builds the romanization packs and uploads them to the `packs-v1` release.
+# The app pins each pack's SHA-256, so once those are committed, re-uploading changes nothing
+# for users until `manifest()` in src-tauri/src/roman/packs.rs is updated. `overwrite` guards that.
+on:
+  workflow_dispatch:
+    inputs:
+      overwrite:
+        description: "Replace packs that are already uploaded (breaks pinned checksums)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  packs:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      PINYIN_DATA_TAG: v0.16.0
+      LINDERA_VERSION: 7.0.0 # must equal the `lindera` version in src-tauri/Cargo.toml
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refuse to overwrite published packs
+        if: ${{ !inputs.overwrite }}
+        run: |
+          if gh release view packs-v1 --json assets --jq '.assets[].name' 2>/dev/null | grep -q '\.zip$'; then
+            echo "::error::packs-v1 already has packs. Re-run with overwrite only if you will update the pinned checksums."
+            exit 1
+          fi
+
+      - name: Chinese pack (pinyin-data)
+        run: |
+          mkdir -p build/zh && cd build/zh
+          curl -fsSLO "https://raw.githubusercontent.com/mozillazg/pinyin-data/$PINYIN_DATA_TAG/pinyin.txt"
+          curl -fsSLO "https://raw.githubusercontent.com/mozillazg/pinyin-data/$PINYIN_DATA_TAG/LICENSE"
+          7z a -tzip -bd ../../zh-pinyin-v1.zip pinyin.txt LICENSE > /dev/null
+
+      - name: Japanese pack (IPADIC built for Lindera)
+        run: |
+          mkdir -p build/ja-src build/ja && cd build/ja-src
+          curl -fsSL -o ipadic.zip "https://github.com/lindera/lindera/releases/download/v$LINDERA_VERSION/lindera-ipadic-$LINDERA_VERSION.zip"
+          7z x -bd ipadic.zip > /dev/null
+          meta=$(find . -name metadata.json | head -1)
+          test -n "$meta" || { echo "::error::no metadata.json in the Lindera IPADIC archive"; exit 1; }
+          cp -r "$(dirname "$meta")"/. ../ja/
+          lic=$(find . \( -iname 'COPYING*' -o -iname 'LICENSE*' \) -type f | head -1)
+          if [ -n "$lic" ]; then cp "$lic" ../ja/LICENSE; else curl -fsSL -o ../ja/LICENSE https://raw.githubusercontent.com/taku910/mecab/master/mecab-ipadic/COPYING; fi
+          cd ../ja && 7z a -tzip -bd -r ../../ja-ipadic-v1.zip . > /dev/null
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Check the Japanese pack with the app's own code
+        run: |
+          OPENMUSIX_JA_DICT="$PWD/build/ja" cargo test --manifest-path src-tauri/Cargo.toml real_dictionary -- --nocapture
+
+      - name: Upload to the packs-v1 release
+        run: |
+          gh release view packs-v1 > /dev/null 2>&1 || gh release create packs-v1 --prerelease --target "$GITHUB_SHA" \
+            --title "Language packs v1" --notes "Romanization data for OpenMusix. Installed from inside the app."
+          gh release upload packs-v1 zh-pinyin-v1.zip ja-ipadic-v1.zip --clobber
+
+      - name: Checksums for the manifest
+        run: |
+          {
+            echo '```'
+            sha256sum zh-pinyin-v1.zip ja-ipadic-v1.zip
+            stat -c '%n %s' zh-pinyin-v1.zip ja-ipadic-v1.zip
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
