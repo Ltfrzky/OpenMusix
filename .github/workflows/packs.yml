@@ -3,7 +3,10 @@ name: Build language packs
 # Builds the romanization packs and uploads them to the `packs-v1` release.
 # The app pins each pack's SHA-256, so once those are committed, re-uploading changes nothing
 # for users until `manifest()` in src-tauri/src/roman/packs.rs is updated. `overwrite` guards that.
+# Pushing the `packs-v1` tag runs it from that commit; workflow_dispatch only works once this file is on main.
 on:
+  push:
+    tags: ["packs-v*"]
   workflow_dispatch:
     inputs:
       overwrite:
