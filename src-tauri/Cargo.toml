@@ -4,8 +4,7 @@ version = "0.1.0"
 description = "Synced lyrics overlay for streamers"
 authors = ["OpenMusix contributors"]
 edition = "2024"
-# TODO(user): repo URL
-repository = ""
+repository = "https://github.com/Ltfrzky/OpenMusix"
 
 [lib]
 name = "openmusix_lib"
