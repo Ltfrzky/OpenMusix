@@ -51,7 +51,7 @@
         <span class="dot"></span>{np ? (np.isPlaying ? "On air" : "Paused") : "Standing by"}
       </span>
       {#if np}
-        <span class="source">{np.source === "spotify" ? "Spotify" : "Windows"}</span>
+        <span class="source">{np.source === "spotify" ? "Spotify" : "This PC"}</span>
       {/if}
       {#if lyricsChip}
         <span class="chip {lyricsChip.tone}">{lyricsChip.label}</span>

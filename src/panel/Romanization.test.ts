@@ -83,7 +83,7 @@ test("broken pack offers reinstall", async () => {
 
 function snap(over: Partial<Snapshot>): Snapshot {
   return {
-    nowPlaying: { track: { title: "Song", artist: "Artist", album: null, durationMs: 1, artUrl: null }, positionMs: 0, sampledAt: 0, isPlaying: true, source: "windows" },
+    nowPlaying: { track: { title: "Song", artist: "Artist", album: null, durationMs: 1, artUrl: null }, positionMs: 0, sampledAt: 0, isPlaying: true, source: "system" },
     lyrics: { status: "loading" }, trackKey: "a|s", mode: "focus", styles: { focus: PRESETS.spotlight, widget: PRESETS.glass },
     globalOffsetMs: 0, trackOffsetMs: 0, showPlainLyrics: false, hideWhenIdle: false,
     romanize: { enabled: true, display: "below" }, roman: null, romanMissing: [], ...over,

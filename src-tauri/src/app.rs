@@ -24,8 +24,8 @@ pub struct AppCtx {
     pub playback_tx: mpsc::Sender<PlaybackEvent>,
     /// Whether Spotify data is on screen; read by the Spotify poller for its cadence.
     pub spotify_used: watch::Sender<bool>,
-    /// Poked whenever the Windows source reports a change so Spotify re-polls at once.
-    pub windows_changed: Arc<Notify>,
+    /// Poked whenever the OS media source reports a change so Spotify re-polls at once.
+    pub system_changed: Arc<Notify>,
     pub roman: Arc<Romanizer>,
     pub packs: Arc<PackManager>,
 }
@@ -110,9 +110,9 @@ pub async fn run_pipeline(ctx: Arc<AppCtx>, mut rx: mpsc::Receiver<PlaybackEvent
     let generation = Arc::new(AtomicU64::new(0));
     while let Some(ev) = rx.recv().await {
         match ev {
-            PlaybackEvent::Windows(s) => {
+            PlaybackEvent::System(s) => {
                 win = s;
-                ctx.windows_changed.notify_one();
+                ctx.system_changed.notify_one();
             }
             PlaybackEvent::Spotify(s) => sp = s,
         }

@@ -67,7 +67,7 @@ pub fn run() {
                 spotify: spotify.clone(),
                 playback_tx: tx.clone(),
                 spotify_used,
-                windows_changed: Arc::new(Notify::new()),
+                system_changed: Arc::new(Notify::new()),
                 roman,
                 packs,
             });
@@ -88,7 +88,7 @@ pub fn run() {
                 }
 
             let tx_spotify = tx.clone();
-            playback::windows::spawn_windows_source(tx, hub.clone());
+            playback::spawn_system_source(tx, hub.clone());
             tauri::async_runtime::spawn(run_pipeline(ctx.clone(), rx));
             tauri::async_runtime::spawn(forward_to_panel(handle.clone(), hub));
             {
@@ -98,7 +98,7 @@ pub fn run() {
                     move || c.settings.get().spotify_client_id.filter(|s| !s.trim().is_empty()),
                     tx_spotify,
                     ctx.spotify_used.subscribe(),
-                    ctx.windows_changed.clone(),
+                    ctx.system_changed.clone(),
                 ));
                 let mut rx = spotify.watch_connected();
                 let h = handle.clone();
