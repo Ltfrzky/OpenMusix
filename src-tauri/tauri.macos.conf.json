@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "resources": {
+      "macos/mediaremote-adapter.pl": "mediaremote/mediaremote-adapter.pl",
+      "macos/MEDIAREMOTE-ADAPTER-LICENSE": "mediaremote/LICENSE"
+    },
+    "macOS": {
+      "frameworks": ["macos/MediaRemoteAdapter.framework"],
+      "minimumSystemVersion": "11.0"
+    }
+  }
+}
