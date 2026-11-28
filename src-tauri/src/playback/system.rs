@@ -1,4 +1,5 @@
 //! Platform-neutral pieces shared by the OS media sources (Windows GSMTC, Linux MPRIS, macOS).
+use super::SourceSnapshot;
 use crate::hub::Art;
 use sha2::{Digest, Sha256};
 use std::sync::mpsc as std_mpsc;
@@ -63,6 +64,48 @@ pub fn art_from_bytes(bytes: Vec<u8>, mime: &str) -> Option<Art> {
     Some(Art { key, mime, bytes })
 }
 
+/// Download a cover image (blocking; call from a source thread, not the async runtime).
+#[cfg_attr(windows, allow(dead_code))]
+pub fn fetch_http_art(url: &str) -> Option<Art> {
+    let url = url.to_string();
+    tauri::async_runtime::block_on(async move {
+        let client = reqwest::Client::builder().timeout(Duration::from_secs(5)).build().ok()?;
+        let resp = client.get(&url).send().await.ok()?.error_for_status().ok()?;
+        if resp.content_length().is_some_and(|n| n as usize > MAX_ART_BYTES) {
+            return None;
+        }
+        let mime = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("image/png")
+            .to_string();
+        let bytes = resp.bytes().await.ok()?;
+        art_from_bytes(bytes.to_vec(), &mime)
+    })
+}
+
+/// Whether `new` differs from `old` by more than normal playback progress (1.5 s tolerance).
+/// Polling sources use it so a steadily advancing position is not re-sent every poll.
+#[cfg_attr(windows, allow(dead_code))]
+pub fn changed_beyond_drift(old: Option<&SourceSnapshot>, new: Option<&SourceSnapshot>) -> bool {
+    match (old, new) {
+        (None, None) => false,
+        (Some(a), Some(b)) => {
+            if a.track != b.track || a.is_playing != b.is_playing {
+                return true;
+            }
+            let expected = if a.is_playing {
+                a.position_ms as i64 + (b.sampled_at - a.sampled_at)
+            } else {
+                a.position_ms as i64
+            };
+            (b.position_ms as i64 - expected).abs() > 1500
+        }
+        _ => true,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,6 +136,37 @@ mod tests {
     #[test] fn art_rejects_empty_and_oversized() {
         assert!(art_from_bytes(vec![], "image/png").is_none());
         assert!(art_from_bytes(vec![0; MAX_ART_BYTES + 1], "image/png").is_none());
+    }
+
+    fn snap(title: &str, pos: u64, at: i64, playing: bool) -> SourceSnapshot {
+        SourceSnapshot {
+            track: crate::model::Track { title: title.into(), ..Default::default() },
+            position_ms: pos,
+            sampled_at: at,
+            is_playing: playing,
+        }
+    }
+    #[test] fn drift_ignores_normal_progress() {
+        let a = snap("S", 10_000, 1_000, true);
+        assert!(!changed_beyond_drift(Some(&a), Some(&snap("S", 11_000, 2_000, true))));
+        assert!(!changed_beyond_drift(Some(&a), Some(&snap("S", 12_200, 2_000, true))));
+    }
+    #[test] fn drift_catches_seek_track_and_state() {
+        let a = snap("S", 10_000, 1_000, true);
+        assert!(changed_beyond_drift(Some(&a), Some(&snap("S", 40_000, 2_000, true))));
+        assert!(changed_beyond_drift(Some(&a), Some(&snap("T", 11_000, 2_000, true))));
+        assert!(changed_beyond_drift(Some(&a), Some(&snap("S", 11_000, 2_000, false))));
+    }
+    #[test] fn drift_paused_position_must_hold() {
+        let a = snap("S", 10_000, 1_000, false);
+        assert!(!changed_beyond_drift(Some(&a), Some(&snap("S", 10_000, 9_000, false))));
+        assert!(changed_beyond_drift(Some(&a), Some(&snap("S", 30_000, 9_000, false))));
+    }
+    #[test] fn drift_presence_changes() {
+        let a = snap("S", 0, 0, true);
+        assert!(changed_beyond_drift(None, Some(&a)));
+        assert!(changed_beyond_drift(Some(&a), None));
+        assert!(!changed_beyond_drift(None, None));
     }
 
     #[test] fn wait_returns_on_timeout_without_events() {

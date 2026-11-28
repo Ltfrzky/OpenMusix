@@ -5,6 +5,10 @@ pub mod mpris_parse;
 pub mod macos_parse;
 #[cfg(windows)]
 pub mod windows;
+#[cfg(target_os = "linux")]
+pub mod linux;
+#[cfg(target_os = "macos")]
+pub mod macos;
 
 use crate::hub::Hub;
 use crate::model::Track;
@@ -33,7 +37,17 @@ pub fn spawn_system_source(tx: mpsc::Sender<PlaybackEvent>, hub: Arc<Hub>) {
     windows::spawn_windows_source(tx, hub);
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+pub fn spawn_system_source(tx: mpsc::Sender<PlaybackEvent>, hub: Arc<Hub>) {
+    linux::spawn_linux_source(tx, hub);
+}
+
+#[cfg(target_os = "macos")]
+pub fn spawn_system_source(tx: mpsc::Sender<PlaybackEvent>, hub: Arc<Hub>) {
+    macos::spawn_macos_source(tx, hub);
+}
+
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 pub fn spawn_system_source(_tx: mpsc::Sender<PlaybackEvent>, _hub: Arc<Hub>) {
     tracing::warn!("no OS media source on this platform yet; only Spotify is available");
 }
