@@ -31,16 +31,16 @@ pub fn manifest() -> Vec<PackSpec> {
             version: 1,
             label: "Chinese (pinyin)".into(),
             url: format!("{RELEASE}zh-pinyin-v1.zip"),
-            sha256: "0".repeat(64),
-            size: 0,
+            sha256: "0970b5992bfed511385b32433cfa19815eb917acd73b41959576f0cb559688a7".into(),
+            size: 297_410,
         },
         PackSpec {
             id: RomanLang::Ja,
             version: 1,
             label: "Japanese (romaji)".into(),
             url: format!("{RELEASE}ja-ipadic-v1.zip"),
-            sha256: "0".repeat(64),
-            size: 0,
+            sha256: "14e24100598c2e5eb94fae50db37bb2c63a8ece1ae364d8e7703c3464879bb5c".into(),
+            size: 10_302_523,
         },
     ]
 }
@@ -398,6 +398,17 @@ mod tests {
     use std::io::Write;
     use std::sync::Mutex;
     use std::time::Duration;
+
+    #[test]
+    fn manifest_is_pinned() {
+        for p in manifest() {
+            assert_eq!(p.sha256.len(), 64, "{:?} hash length", p.id);
+            assert!(p.sha256.chars().all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)), "{:?} hash is lowercase hex", p.id);
+            assert_ne!(p.sha256, "0".repeat(64), "{:?} hash is a placeholder", p.id);
+            assert!(p.size > 0, "{:?} size", p.id);
+            assert!(p.url.starts_with("https://github.com/Ltfrzky/OpenMusix/releases/download/packs-v1/"), "{:?} url", p.id);
+        }
+    }
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
