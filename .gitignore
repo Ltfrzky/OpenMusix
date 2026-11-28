@@ -8,3 +8,4 @@ src-tauri/macos/
 *.log
 
 release/
+graphify-out/
