@@ -8,14 +8,34 @@ permissions:
 
 jobs:
   release:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: ""
+          - os: ubuntu-22.04
+            args: ""
+          - os: macos-latest
+            args: "--target universal-apple-darwin"
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Linux system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libfontconfig1-dev libfreetype6-dev libdbus-1-dev
+      - name: Build MediaRemote adapter
+        if: runner.os == 'macOS'
+        run: scripts/build-mediaremote-adapter.sh
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
@@ -26,5 +46,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: OpenMusix ${{ github.ref_name }}
-          releaseBody: See the README for setup. The installer is unsigned; Windows SmartScreen may warn on first run.
+          releaseBody: See the README for setup. The builds are unsigned, so Windows SmartScreen and macOS Gatekeeper warn on first launch (on macOS, right-click the app and choose Open).
           releaseDraft: true
+          args: ${{ matrix.args }}
