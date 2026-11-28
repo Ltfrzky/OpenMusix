@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { LyricLine, Style, Track } from "../lib/types";
+  import type { LyricLine, RomanDisplay, Style, Track } from "../lib/types";
+  import RomanText from "./RomanText.svelte";
 
   let {
     lines,
@@ -9,6 +10,8 @@
     message,
     plainText,
     artUrl,
+    roman = null,
+    display = "below",
   }: {
     lines: LyricLine[];
     index: number;
@@ -17,7 +20,11 @@
     message: string | null;
     plainText: string | null;
     artUrl: string | null;
+    roman?: (string | null)[] | null;
+    display?: RomanDisplay;
   } = $props();
+
+  const plainRows = $derived(plainText ? plainText.split(/\r?\n/) : []);
 
   const start = $derived(Math.max(0, index));
   const visible = $derived(lines.slice(start, start + Math.max(1, style.lineCount)));
@@ -37,18 +44,29 @@
     <div class="lines">
       <!-- Keyed by absolute line index: lines already on screen stay put, only the new one enters. -->
       {#each visible as line, i (start + i)}
-        <p class="om-line" class:current={i === 0 && index >= 0}>{line.text || "♪"}</p>
+        <p class="om-line" class:current={i === 0 && index >= 0}>
+          <RomanText text={line.text || "♪"} roman={roman?.[start + i] ?? null} {display} />
+        </p>
       {/each}
     </div>
   {:else if message || plainText}
     <div class="lines">
       {#if message}<p class="message">{message}</p>{/if}
-      {#if plainText}<p class="plain">{plainText}</p>{/if}
+      {#if plainText && roman}
+        <p class="plain">
+          {#each plainRows as row, i (i)}
+            <span class="plain-line"><RomanText text={row} roman={roman[i] ?? null} {display} /></span>
+          {/each}
+        </p>
+      {:else if plainText}<p class="plain">{plainText}</p>{/if}
     </div>
   {/if}
 </div>
 
 <style>
+  .plain-line {
+    display: block;
+  }
   .om-widget {
     position: absolute;
     left: 12px;

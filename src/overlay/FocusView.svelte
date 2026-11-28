@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { LyricLine, Style, Track } from "../lib/types";
+  import type { LyricLine, RomanDisplay, Style, Track } from "../lib/types";
+  import RomanText from "./RomanText.svelte";
 
   let {
     lines,
@@ -8,7 +9,20 @@
     track,
     message,
     plainText,
-  }: { lines: LyricLine[]; index: number; style: Style; track: Track; message: string | null; plainText: string | null } = $props();
+    roman = null,
+    display = "below",
+  }: {
+    lines: LyricLine[];
+    index: number;
+    style: Style;
+    track: Track;
+    message: string | null;
+    plainText: string | null;
+    roman?: (string | null)[] | null;
+    display?: RomanDisplay;
+  } = $props();
+
+  const plainRows = $derived(plainText ? plainText.split(/\r?\n/) : []);
 
   let els: HTMLElement[] = $state([]);
   let offset = $state(0);
@@ -35,7 +49,7 @@
     <div class="column" style="transform: translateY({offset}px)">
       {#each lines as line, i (i)}
         <p bind:this={els[i]} class="om-line" class:current={i === index} style={look(i)}>
-          {line.text || "♪"}
+          <RomanText text={line.text || "♪"} roman={roman?.[i] ?? null} {display} />
         </p>
       {/each}
     </div>
@@ -44,7 +58,13 @@
       <p class="title">{track.title}</p>
       <p class="artist">{track.artist}</p>
       {#if message}<p class="message">{message}</p>{/if}
-      {#if plainText}<p class="plain">{plainText}</p>{/if}
+      {#if plainText && roman}
+        <p class="plain">
+          {#each plainRows as row, i (i)}
+            <span class="plain-line"><RomanText text={row} roman={roman[i] ?? null} {display} /></span>
+          {/each}
+        </p>
+      {:else if plainText}<p class="plain">{plainText}</p>{/if}
     </div>
   {/if}
 </div>
@@ -88,6 +108,9 @@
     transition-property: transform, opacity, color;
     transition-duration: 350ms;
     transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  }
+  .plain-line {
+    display: block;
   }
   .om-line.current {
     color: var(--om-hl);

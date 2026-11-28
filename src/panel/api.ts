@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { Mode, ServerStatus, Settings, Snapshot } from "../lib/types";
+import type { Mode, PackInfo, RomanLang, ServerStatus, Settings, Snapshot } from "../lib/types";
 
 export const api = {
   getSnapshot: () => invoke<Snapshot>("get_snapshot"),
@@ -17,7 +17,18 @@ export const api = {
   spotifyStatus: () => invoke<SpotifyStatus>("spotify_status"),
   spotifyConnect: () => invoke<void>("spotify_connect"),
   spotifyDisconnect: () => invoke<void>("spotify_disconnect"),
+  listPacks: () => invoke<PackInfo[]>("list_packs"),
+  installPack: (id: RomanLang) => invoke<void>("install_pack", { id }),
+  removePack: (id: RomanLang) => invoke<void>("remove_pack", { id }),
+  cancelPackInstall: (id: RomanLang) => invoke<void>("cancel_pack_install", { id }),
 };
+
+export function onPackProgress(cb: (p: { id: RomanLang; pct: number }) => void): Promise<UnlistenFn> {
+  return listen<{ id: RomanLang; pct: number }>("pack-progress", (e) => cb(e.payload));
+}
+export function onPacksChanged(cb: (p: PackInfo[]) => void): Promise<UnlistenFn> {
+  return listen<PackInfo[]>("packs-changed", (e) => cb(e.payload));
+}
 
 export interface SpotifyStatus {
   connected: boolean;

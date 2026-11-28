@@ -1,7 +1,8 @@
 //! Single source of truth for what the overlay shows, broadcast via `tokio::sync::watch`.
 use crate::lyrics::LyricsStatus;
 use crate::model::NowPlaying;
-use crate::settings::{Mode, Styles};
+use crate::roman::RomanLang;
+use crate::settings::{Mode, Romanize, Styles};
 use serde::Serialize;
 use std::sync::RwLock;
 use tokio::sync::watch;
@@ -18,6 +19,11 @@ pub struct Snapshot {
     pub track_offset_ms: i32,
     pub show_plain_lyrics: bool,
     pub hide_when_idle: bool,
+    pub romanize: Romanize,
+    /// Romanized text parallel to the current lyric lines; `None` when off or not computed.
+    pub roman: Option<Vec<Option<String>>>,
+    /// Packs the current song needs that aren't installed. Read by the panel only.
+    pub roman_missing: Vec<RomanLang>,
 }
 
 impl Default for Snapshot {
@@ -32,6 +38,9 @@ impl Default for Snapshot {
             track_offset_ms: 0,
             show_plain_lyrics: false,
             hide_when_idle: false,
+            romanize: Romanize::default(),
+            roman: None,
+            roman_missing: Vec::new(),
         }
     }
 }

@@ -4,6 +4,8 @@ use crate::hub::Hub;
 use crate::lyrics::{LyricsService, LyricsStatus};
 use crate::normalize::track_key;
 use crate::playback::{merger::merge, PlaybackEvent, SourceSnapshot};
+use crate::roman::packs::PackManager;
+use crate::roman::{apply_roman, roman_input, Romanizer};
 use crate::server::{start_server, OAuthCallback, ServerStatus, Shutdown};
 use crate::settings::SettingsStore;
 use std::sync::Arc;
@@ -24,6 +26,8 @@ pub struct AppCtx {
     pub spotify_used: watch::Sender<bool>,
     /// Poked whenever the Windows source reports a change so Spotify re-polls at once.
     pub windows_changed: Arc<Notify>,
+    pub roman: Arc<Romanizer>,
+    pub packs: Arc<PackManager>,
 }
 
 impl AppCtx {
@@ -31,6 +35,36 @@ impl AppCtx {
     pub fn sync_settings(&self) {
         let s = self.settings.get();
         self.hub.modify(|snap| project_settings(&s, snap));
+    }
+
+    /// Recompute romanization for what the hub shows now. The original lyrics are already on screen;
+    /// the result is dropped if the track or lines changed meanwhile.
+    pub fn refresh_roman(self: &Arc<Self>) {
+        let snap = self.hub.current();
+        let key = snap.track_key.clone();
+        let Some(input) = roman_input(&snap) else {
+            self.hub.modify(|s| {
+                s.roman = None;
+                s.roman_missing.clear();
+            });
+            return;
+        };
+        let ctx = self.clone();
+        tauri::async_runtime::spawn(async move {
+            let roman = ctx.roman.clone();
+            let lines = input.clone();
+            let Ok(out) = tokio::task::spawn_blocking(move || {
+                let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+                roman.romanize(&refs)
+            })
+            .await
+            else {
+                return;
+            };
+            ctx.hub.modify(|s| {
+                apply_roman(s, &key, &input, out);
+            });
+        });
     }
 
     /// (Re)start the overlay server on the configured port and broadcast its status.
@@ -99,6 +133,8 @@ pub async fn run_pipeline(ctx: Arc<AppCtx>, mut rx: mpsc::Receiver<PlaybackEvent
             if snap.track_key != key || lookup {
                 snap.track_key = key.clone();
                 snap.lyrics = LyricsStatus::Loading;
+                snap.roman = None;
+                snap.roman_missing.clear();
             }
             project_settings(&settings, snap);
         });
@@ -106,17 +142,20 @@ pub async fn run_pipeline(ctx: Arc<AppCtx>, mut rx: mpsc::Receiver<PlaybackEvent
             let (Some(now), Some(key)) = (merged.now, key) else { continue };
             resolved = Some((key, duration));
             let my_gen = generation.fetch_add(1, Ordering::SeqCst) + 1;
-            let hub = ctx.hub.clone();
+            let c = ctx.clone();
             let lyrics = ctx.lyrics.clone();
             let latest = generation.clone();
             tokio::spawn(async move {
                 let is_current = || latest.load(Ordering::SeqCst) == my_gen;
                 if let Some(status) = lyrics.resolve_until(&now.track, is_current, &RETRY_DELAYS).await {
-                    hub.modify(|s| {
+                    c.hub.modify(|s| {
                         if latest.load(Ordering::SeqCst) == my_gen {
                             s.lyrics = status;
+                            s.roman = None;
+                            s.roman_missing.clear();
                         }
                     });
+                    c.refresh_roman();
                 }
             });
         }
