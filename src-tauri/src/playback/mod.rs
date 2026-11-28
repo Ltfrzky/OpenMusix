@@ -2,6 +2,7 @@ pub mod merger;
 pub mod spotify;
 pub mod system;
 pub mod mpris_parse;
+pub mod macos_parse;
 #[cfg(windows)]
 pub mod windows;
 
