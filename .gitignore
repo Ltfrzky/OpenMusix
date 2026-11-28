@@ -6,3 +6,6 @@ src-tauri/macos/
 .superpowers/
 .claude/worktrees/
 *.log
+
+release/
+graphify-out/
