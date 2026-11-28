@@ -49,7 +49,7 @@ keyring = { version = "3", features = ["windows-native"] }
 keyring = { version = "3", features = ["apple-native"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-keyring = { version = "3", features = ["async-secret-service", "tokio", "crypto-rust"] }
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 mpris = "2"
 
 [dev-dependencies]
