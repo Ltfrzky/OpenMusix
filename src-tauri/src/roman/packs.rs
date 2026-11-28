@@ -565,6 +565,8 @@ mod tests {
         assert_eq!(first.lock().unwrap().take(), Some((0, PackState::Installing { pct: 0 })));
     }
 
+    // Share-mode locks that block deletion exist only on Windows.
+    #[cfg(windows)]
     #[tokio::test]
     async fn failed_remove_keeps_list_and_romanizer_consistent() {
         let body = make_zip(&[("a-locked.txt", b"x"), ("pinyin.txt", FIX.as_bytes())]);
