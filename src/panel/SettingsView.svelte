@@ -102,7 +102,7 @@
 
   <section class="card">
     <header><h2>App</h2></header>
-    <label class="switch"><span>Start with Windows</span><input type="checkbox" checked={settings.startWithWindows} onchange={(e) => onSave({ startWithWindows: e.currentTarget.checked })} /></label>
+    <label class="switch"><span>Start at login</span><input type="checkbox" checked={settings.startWithWindows} onchange={(e) => onSave({ startWithWindows: e.currentTarget.checked })} /></label>
     <label class="switch"><span>Closing the window keeps OpenMusix in the tray</span><input type="checkbox" checked={settings.minimizeToTray} onchange={(e) => onSave({ minimizeToTray: e.currentTarget.checked })} /></label>
   </section>
 
