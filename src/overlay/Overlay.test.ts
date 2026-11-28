@@ -8,7 +8,7 @@ import type { LyricsStatus, Snapshot } from "../lib/types";
 
 function snap(lyrics: LyricsStatus, over: Partial<Snapshot> = {}): Snapshot {
   return {
-    nowPlaying: { track: { title: "Song", artist: "Artist", album: null, durationMs: 200000, artUrl: null }, positionMs: 0, sampledAt: Date.now(), isPlaying: true, source: "windows" },
+    nowPlaying: { track: { title: "Song", artist: "Artist", album: null, durationMs: 200000, artUrl: null }, positionMs: 0, sampledAt: Date.now(), isPlaying: true, source: "system" },
     lyrics, trackKey: "artist|song", mode: "focus", styles: { focus: PRESETS.spotlight, widget: PRESETS.glass },
     globalOffsetMs: 0, trackOffsetMs: 0, showPlainLyrics: false, hideWhenIdle: false,
     romanize: { enabled: false, display: "below" }, roman: null, romanMissing: [], ...over,

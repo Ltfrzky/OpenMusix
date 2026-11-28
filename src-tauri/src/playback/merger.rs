@@ -34,13 +34,13 @@ pub fn merge(win: Option<&SourceSnapshot>, sp: Option<&SourceSnapshot>) -> Merge
             }
             return Merged { now: Some(n), spotify_used: true };
         }
-        return Merged { now: Some(from(w, Source::Windows)), spotify_used: false };
+        return Merged { now: Some(from(w, Source::System)), spotify_used: false };
     }
     if let Some(s) = sp_playing {
         return Merged { now: Some(from(s, Source::Spotify)), spotify_used: true };
     }
     if let Some(w) = win {
-        return Merged { now: Some(from(w, Source::Windows)), spotify_used: false };
+        return Merged { now: Some(from(w, Source::System)), spotify_used: false };
     }
     Merged { now: sp.map(|s| from(s, Source::Spotify)), spotify_used: false }
 }
@@ -55,7 +55,7 @@ mod tests {
     }
     #[test] fn windows_only() {
         let m = merge(Some(&snap("S", true, 5, None)), None);
-        assert_eq!(m.now.unwrap().source, Source::Windows); assert!(!m.spotify_used);
+        assert_eq!(m.now.unwrap().source, Source::System); assert!(!m.spotify_used);
     }
     #[test] fn spotify_refines_same_track() {
         let mut sp = snap("S - Remastered", true, 61_000, Some(200_000));
@@ -68,7 +68,7 @@ mod tests {
     }
     #[test] fn pc_wins_on_different_track() {
         let m = merge(Some(&snap("A", true, 0, None)), Some(&snap("B", true, 0, None)));
-        let n = m.now.unwrap(); assert_eq!(n.track.title, "A"); assert_eq!(n.source, Source::Windows); assert!(!m.spotify_used);
+        let n = m.now.unwrap(); assert_eq!(n.track.title, "A"); assert_eq!(n.source, Source::System); assert!(!m.spotify_used);
     }
     #[test] fn spotify_when_pc_paused() {
         let m = merge(Some(&snap("A", false, 0, None)), Some(&snap("B", true, 0, None)));

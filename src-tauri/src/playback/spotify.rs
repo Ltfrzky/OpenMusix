@@ -1,5 +1,5 @@
 //! Optional Spotify Web API poller (currently-playing), used to refine timing.
-use super::{windows::now_unix_ms, PlaybackEvent, SourceSnapshot};
+use super::{system::now_unix_ms, PlaybackEvent, SourceSnapshot};
 use crate::model::Track;
 use crate::spotify_auth::{AuthError, SpotifyAuth};
 use serde::Deserialize;
@@ -178,7 +178,7 @@ pub async fn run_poller(
         let rate_limited = retry_after.is_some();
         tokio::select! {
             _ = tokio::time::sleep(delay) => {}
-            // A Windows-side change (track skip, seek) re-polls at once, unless we're backing off.
+            // An OS-side change (track skip, seek) re-polls at once, unless we're backing off.
             _ = wake.notified(), if !rate_limited => {}
             _ = spotify_used.changed() => {}
         }

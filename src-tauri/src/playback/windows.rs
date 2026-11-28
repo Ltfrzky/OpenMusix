@@ -1,11 +1,11 @@
 //! Windows media session (GSMTC) source. Event-driven: re-reads only when Windows says something changed.
+use super::system::{art_from_bytes, now_unix_ms, pick_session, wait_for_wake, SessionInfo, Wake, RESCAN_INTERVAL};
 use super::{PlaybackEvent, SourceSnapshot};
 use crate::hub::{Art, Hub};
 use crate::model::Track;
-use sha2::{Digest, Sha256};
 use std::sync::mpsc as std_mpsc;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use tokio::sync::mpsc;
 
 /// 100 ns ticks between 1601-01-01 and 1970-01-01.
@@ -17,51 +17,6 @@ pub fn ticks_to_unix_ms(universal_time: i64) -> i64 {
 
 pub fn timespan_to_ms(duration_100ns: i64) -> u64 {
     (duration_100ns.max(0) / 10_000) as u64
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SessionInfo {
-    pub app_id: String,
-    pub is_playing: bool,
-}
-
-fn is_spotify(s: &SessionInfo) -> bool {
-    s.app_id.to_lowercase().contains("spotify")
-}
-
-/// Spotify & playing → any playing → Spotify → current → first.
-pub fn pick_session(sessions: &[SessionInfo], current: Option<usize>) -> Option<usize> {
-    let find = |f: &dyn Fn(&SessionInfo) -> bool| sessions.iter().position(f);
-    find(&|s| is_spotify(s) && s.is_playing)
-        .or_else(|| find(&|s| s.is_playing))
-        .or_else(|| find(&is_spotify))
-        .or(current.filter(|&i| i < sessions.len()))
-        .or(if sessions.is_empty() { None } else { Some(0) })
-}
-
-/// How often the reader re-checks all sessions even without events. Windows only reports
-/// playback changes for the session we subscribe to, so another session that starts or
-/// resumes playing would otherwise go unnoticed.
-pub const RESCAN_INTERVAL: Duration = Duration::from_millis(1500);
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum Wake {
-    Event,
-    Rescan,
-    Closed,
-}
-
-/// Block until an event arrives or `timeout` passes.
-pub fn wait_for_wake(rx: &std_mpsc::Receiver<()>, timeout: Duration) -> Wake {
-    match rx.recv_timeout(timeout) {
-        Ok(()) => Wake::Event,
-        Err(std_mpsc::RecvTimeoutError::Timeout) => Wake::Rescan,
-        Err(std_mpsc::RecvTimeoutError::Disconnected) => Wake::Closed,
-    }
-}
-
-pub fn now_unix_ms() -> i64 {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
 /// Spawn the reader thread. It owns all WinRT objects; handlers only poke a channel.
@@ -135,7 +90,7 @@ mod imp {
     fn read_thumbnail(props: &windows::Media::Control::GlobalSystemMediaTransportControlsSessionMediaProperties) -> Option<Art> {
         let stream = props.Thumbnail().ok()?.OpenReadAsync().ok()?.get().ok()?;
         let size = stream.Size().ok()? as u32;
-        if size == 0 || size > 8 * 1024 * 1024 {
+        if size == 0 || size as usize > crate::playback::system::MAX_ART_BYTES {
             return None;
         }
         let mime = stream.ContentType().map(|h| h.to_string()).unwrap_or_else(|_| "image/png".into());
@@ -143,9 +98,7 @@ mod imp {
         reader.LoadAsync(size).ok()?.get().ok()?;
         let mut bytes = vec![0u8; size as usize];
         reader.ReadBytes(&mut bytes).ok()?;
-        let h = Sha256::digest(&bytes);
-        let key: String = h.iter().take(8).map(|b| format!("{b:02x}")).collect();
-        Some(Art { key, mime: if mime.is_empty() { "image/png".into() } else { mime }, bytes })
+        art_from_bytes(bytes, &mime)
     }
 
     /// Returns the snapshot plus the art (only re-read when the track identity changed).
@@ -235,7 +188,7 @@ mod imp {
             }
             if last_sent.as_ref() != Some(&snap) {
                 last_sent = Some(snap.clone());
-                if tx.blocking_send(PlaybackEvent::Windows(snap)).is_err() {
+                if tx.blocking_send(PlaybackEvent::System(snap)).is_err() {
                     break;
                 }
             }
@@ -247,42 +200,9 @@ mod imp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn si(id: &str, playing: bool) -> SessionInfo { SessionInfo { app_id: id.into(), is_playing: playing } }
     #[test] fn epoch_conversion() {
         assert_eq!(ticks_to_unix_ms(116_444_736_000_000_000), 0);
         assert_eq!(ticks_to_unix_ms(116_444_736_000_000_000 + 10_000), 1);
     }
     #[test] fn timespan() { assert_eq!(timespan_to_ms(12_340_000), 1234); assert_eq!(timespan_to_ms(-5), 0); }
-    #[test] fn prefers_playing_session_over_paused_spotify() {
-        let s = [si("Spotify.exe", false), si("chrome", true)];
-        assert_eq!(pick_session(&s, Some(0)), Some(1));
-    }
-    #[test] fn prefers_playing_spotify() {
-        let s = [si("chrome", true), si("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify", true)];
-        assert_eq!(pick_session(&s, None), Some(1));
-    }
-    #[test] fn falls_back_to_current() { assert_eq!(pick_session(&[si("a", false), si("b", false)], Some(1)), Some(1)); }
-    #[test] fn paused_spotify_beats_other_paused() { assert_eq!(pick_session(&[si("a", false), si("Spotify.exe", false)], Some(0)), Some(1)); }
-    #[test] fn empty() { assert_eq!(pick_session(&[], None), None); }
-}
-
-#[cfg(test)]
-mod wake_tests {
-    use super::*;
-    #[test] fn wait_returns_on_timeout_without_events() {
-        let (_tx, rx) = std_mpsc::channel::<()>();
-        let t = std::time::Instant::now();
-        assert_eq!(wait_for_wake(&rx, Duration::from_millis(40)), Wake::Rescan);
-        assert!(t.elapsed() < Duration::from_millis(500));
-    }
-    #[test] fn wait_returns_on_event() {
-        let (tx, rx) = std_mpsc::channel::<()>();
-        tx.send(()).unwrap();
-        assert_eq!(wait_for_wake(&rx, Duration::from_secs(5)), Wake::Event);
-    }
-    #[test] fn wait_reports_closed() {
-        let (tx, rx) = std_mpsc::channel::<()>();
-        drop(tx);
-        assert_eq!(wait_for_wake(&rx, Duration::from_secs(5)), Wake::Closed);
-    }
 }

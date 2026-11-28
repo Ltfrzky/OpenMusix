@@ -1,6 +1,6 @@
 // Mirrors of the Rust JSON shapes (camelCase). Keep in sync with src-tauri/src/{model,settings,hub,lyrics}.rs.
 export type Mode = "focus" | "widget";
-export type Source = "windows" | "spotify";
+export type Source = "system" | "spotify";
 export type TextEffect = "none" | "outline" | "shadow";
 export type Align = "left" | "center" | "right";
 export type Background = "transparent" | "panel";

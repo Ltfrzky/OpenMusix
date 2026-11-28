@@ -20,6 +20,7 @@
         "minHeight": 600
       }
     ],
+    "macOSPrivateApi": true,
     "security": {
       "csp": "default-src 'self'; img-src 'self' data: asset: http://127.0.0.1:* https://i.scdn.co; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:*; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
     }
@@ -27,18 +28,28 @@
   "bundle": {
     "active": true,
     "targets": [
-      "nsis"
+      "nsis",
+      "deb",
+      "appimage",
+      "dmg",
+      "app"
     ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
+      "icons/icon.icns",
       "icons/icon.ico"
     ],
     "shortDescription": "Synced lyrics overlay for streamers",
     "longDescription": "OpenMusix detects the song you are playing, fetches time-synced lyrics from LRCLIB and serves them as an OBS-ready overlay.",
     "publisher": "OpenMusix",
     "homepage": "https://github.com/Ltfrzky/OpenMusix",
+    "linux": {
+      "deb": {
+        "depends": ["libayatana-appindicator3-1"]
+      }
+    },
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
@@ -49,4 +60,4 @@
       }
     }
   }
-}
+}
