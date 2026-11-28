@@ -16,6 +16,7 @@ pub mod packs;
 pub mod script;
 pub mod zh;
 
+use std::borrow::Cow;
 use std::sync::RwLock;
 
 /// Failure loading a pack's data.
@@ -125,18 +126,70 @@ impl Romanizer {
 }
 
 /// Join pieces, putting a space between a romanized piece and a neighbouring letter or digit.
+/// Full-width CJK punctuation in the original pieces becomes its ASCII form.
 fn join(pieces: &[(bool, String)]) -> String {
     let mut s = String::new();
     let mut prev_roman = false;
     for (roman, text) in pieces {
-        let touches = s.chars().last().is_some_and(char::is_alphanumeric) && text.chars().next().is_some_and(char::is_alphanumeric);
-        if touches && (prev_roman || *roman) {
+        let text = if *roman { Cow::Borrowed(text.as_str()) } else { Cow::Owned(ascii_punct(text)) };
+        let (Some(last), Some(first)) = (s.chars().last(), text.chars().next()) else {
+            s.push_str(&text);
+            prev_roman = *roman;
+            continue;
+        };
+        let space = if prev_roman || *roman {
+            (last.is_alphanumeric() && first.is_alphanumeric())
+                || (matches!(last, ',' | '.' | '!' | '?' | '”' | ')' | '~') && first.is_alphanumeric())
+                || (last.is_alphanumeric() && matches!(first, '“' | '('))
+        } else {
+            false
+        };
+        if space {
             s.push(' ');
         }
-        s.push_str(text);
+        s.push_str(&text);
         prev_roman = *roman;
     }
-    s.split_whitespace().collect::<Vec<_>>().join(" ")
+    tidy(&s)
+}
+
+/// Full-width punctuation, letters and digits to ASCII, spaced as in English;
+/// Japanese quote brackets become curly quotes.
+fn ascii_punct(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '、' | '，' => out.push_str(", "),
+            '。' | '．' => out.push_str(". "),
+            '！' => out.push_str("! "),
+            '？' => out.push_str("? "),
+            '「' | '『' => out.push_str(" “"),
+            '」' | '』' => out.push_str("” "),
+            '（' => out.push_str(" ("),
+            '）' => out.push_str(") "),
+            '〜' | '～' => out.push('~'),
+            '\u{3000}' => out.push(' '),
+            '\u{FF01}'..='\u{FF5E}' => out.push(char::from_u32(c as u32 - 0xFEE0).unwrap_or(c)),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Collapse whitespace and drop spaces before closing punctuation and after opening brackets.
+fn tidy(s: &str) -> String {
+    let s = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len());
+    for (i, &c) in chars.iter().enumerate() {
+        let next = chars.get(i + 1).copied();
+        let prev = i.checked_sub(1).map(|p| chars[p]);
+        let drop = c == ' ' && (next.is_some_and(|n| ",.!?”)".contains(n)) || prev.is_some_and(|p| "“(".contains(p)));
+        if !drop {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// The lines to romanize for the current snapshot, or `None` when romanization doesn't apply.
@@ -248,5 +301,9 @@ mod tests {
     }
     #[test] fn korean_punctuation_spacing() {
         assert_eq!(Romanizer::new().romanize(&["(사랑해!)"]).lines, vec![Some("(saranghae!)".into())]);
+    }
+    #[test] fn fullwidth_punctuation_becomes_ascii() {
+        assert_eq!(Romanizer::new().romanize(&["사랑해、「안녕」と！？"]).lines, vec![Some("saranghae, “annyeong” と!?".into())]);
+        assert_eq!(Romanizer::new().romanize(&["（사랑）해。"]).lines, vec![Some("(sarang) hae.".into())]);
     }
 }
